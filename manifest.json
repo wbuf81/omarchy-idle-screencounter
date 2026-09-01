@@ -1,0 +1,39 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.wbuf81.idle-screencounter",
+  "name": "Idle Screen Counter",
+  "version": "1.0.0",
+  "author": "Wes (wbuf81)",
+  "license": "MIT",
+  "description": "A theme-aware split-flap countdown before Omarchy starts the screensaver.",
+  "kinds": ["service", "bar-widget"],
+  "keepLoaded": true,
+  "entryPoints": {
+    "service": "Service.qml",
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Idle Screen Counter",
+    "description": "Shows and configures a retro countdown before the screensaver.",
+    "category": "System",
+    "allowMultiple": false,
+    "defaultSection": "right",
+    "defaults": {
+      "enabled": true,
+      "warningSeconds": 120,
+      "screensaverSeconds": 600,
+      "lockSeconds": 1200,
+      "snapSeconds": 30,
+      "placement": "center"
+    },
+    "schema": [
+      {"key": "enabled", "type": "boolean", "label": "Countdown enabled", "defaultValue": true},
+      {"key": "warningSeconds", "type": "integer", "label": "Show countdown after (seconds)", "min": 15, "max": 1800, "defaultValue": 120},
+      {"key": "screensaverSeconds", "type": "integer", "label": "Start screensaver after (seconds)", "min": 30, "max": 1800, "defaultValue": 600},
+      {"key": "lockSeconds", "type": "integer", "label": "Lock after (seconds)", "min": 45, "max": 3600, "defaultValue": 1200},
+      {"key": "snapSeconds", "type": "integer", "label": "Slider snap (seconds)", "min": 15, "max": 60, "defaultValue": 30},
+      {"key": "placement", "type": "string", "label": "Popup placement", "defaultValue": "center"}
+    ]
+  },
+  "keywords": ["idle", "screensaver", "lock", "countdown", "retro", "split-flap"]
+}

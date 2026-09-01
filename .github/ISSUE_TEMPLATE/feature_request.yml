@@ -1,0 +1,22 @@
+name: Feature request
+description: Pitch a delightful improvement.
+title: "[Idea]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: What should the plugin do?
+    validations:
+      required: true
+  - type: textarea
+    id: value
+    attributes:
+      label: Why would this be useful or fun?
+    validations:
+      required: true
+  - type: textarea
+    id: vibe
+    attributes:
+      label: Visual or interaction references
+      description: Screenshots, sketches, and links are welcome.

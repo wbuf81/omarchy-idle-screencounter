@@ -1,0 +1,48 @@
+name: Bug report
+description: Something did not flap, count, hide, or save correctly.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping make Idle Screen Counter sturdier.
+  - type: input
+    id: omarchy-version
+    attributes:
+      label: Omarchy version
+      description: Run `omarchy version`.
+      placeholder: 4.0.2-1
+    validations:
+      required: true
+  - type: dropdown
+    id: monitors
+    attributes:
+      label: Monitor setup
+      options: [Single monitor, Multiple monitors]
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant shell log
+      description: Paste the Idle Screen Counter lines from the Quickshell log if available.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Quick checks
+      options:
+        - label: I tested the **Preview countdown** button.
+        - label: I checked whether Omarchy **Stay Awake** was enabled.
