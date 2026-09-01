@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Stop and suppress the countdown as soon as Omarchy starts the screensaver.
+- Suppress countdown and preview surfaces while the session is locking or locked.
+- Defer to Omarchy's authoritative idle lifecycle after plugin reloads mid-cycle.
+
 ## 1.0.0
 
 - Theme-aware mechanical split-flap countdown popup.

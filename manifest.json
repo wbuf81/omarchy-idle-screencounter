@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.wbuf81.idle-screencounter",
   "name": "Idle Screen Counter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Wes (wbuf81)",
   "license": "MIT",
   "description": "A theme-aware split-flap countdown before Omarchy starts the screensaver.",

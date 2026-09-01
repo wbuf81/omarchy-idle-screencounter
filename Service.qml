@@ -30,13 +30,27 @@ Item {
   // warning is too late, show the counter for the final available second.
   readonly property int warningSeconds: timeline.effectiveWarning
   readonly property var omarchyIdle: shell && typeof shell.firstPartyServiceFor === "function" ? shell.firstPartyServiceFor("omarchy.idle") : null
+  readonly property var omarchyLock: shell && typeof shell.firstPartyServiceFor === "function" ? shell.firstPartyServiceFor("omarchy.lock") : null
   readonly property bool idleArmed: !omarchyIdle || omarchyIdle.idleEnabled === true
+  // The shell's lifecycle state is authoritative. A plugin reload can create
+  // this service's IdleMonitor partway through an existing idle cycle, so its
+  // local elapsed time must never keep a popup above the real screensaver or
+  // lock surface.
+  readonly property bool screensaverActive: !!omarchyIdle && (
+    omarchyIdle.screensaverStartedThisCycle === true
+    || Number(omarchyIdle.screensaverWindowCount || 0) > 0
+  )
+  readonly property bool sessionLocked: !!omarchyLock && (
+    omarchyLock.locked === true || omarchyLock.lockRequested === true
+  )
   readonly property string placement: Logic.normalizedPlacement(setting("placement", "center"))
   // Countdown is a notification-like surface, so prefer the theme's semantic
   // countdown color over assuming its generic accent is always appropriate.
   readonly property color countdownAccent: Color.notifications.countdown
   readonly property bool warningVisible: enabled && idleMonitor.isIdle && remainingSeconds > 0
-  readonly property bool popupVisible: warningVisible || previewVisible
+    && !screensaverActive && !sessionLocked
+  readonly property bool popupVisible: !screensaverActive && !sessionLocked
+    && (warningVisible || previewVisible)
   readonly property string effectivePlacement: previewVisible ? previewPlacement : placement
   readonly property int displaySeconds: previewVisible ? previewSeconds : remainingSeconds
   readonly property string targetScreenName: {
@@ -76,8 +90,9 @@ Item {
   }
 
   function updateCountdown() {
-    if (!idleMonitor.isIdle) {
+    if (!idleMonitor.isIdle || screensaverActive || sessionLocked) {
       remainingSeconds = 0
+      countdownTimer.stop()
       return
     }
     elapsedSeconds = Math.max(0, Math.floor((Date.now() - countdownStartedAt) / 1000))
@@ -88,6 +103,10 @@ Item {
   property int elapsedSeconds: 0
 
   function beginCountdown() {
+    if (!enabled || !idleArmed || screensaverActive || sessionLocked) {
+      endCountdown("system-state")
+      return
+    }
     elapsedSeconds = 0
     countdownStartedAt = Date.now()
     updateCountdown()
@@ -95,13 +114,13 @@ Item {
     console.log("idle-screen-counter countdown-start warning=" + warningSeconds + " deadline=" + nextDeadlineSeconds + " event=" + (nextEventIsLock ? "lock" : "screensaver") + " remaining=" + remainingSeconds)
   }
 
-  function endCountdown() {
+  function endCountdown(reason) {
     var wasCounting = countdownTimer.running || remainingSeconds > 0
     countdownTimer.stop()
     elapsedSeconds = 0
     countdownStartedAt = 0
     remainingSeconds = 0
-    if (wasCounting) console.log("idle-screen-counter countdown-cancelled activity")
+    if (wasCounting) console.log("idle-screen-counter countdown-cancelled " + String(reason || "activity"))
   }
 
   function preview(position) {
@@ -117,11 +136,13 @@ Item {
     enabled: root.enabled && root.idleArmed
     timeout: root.warningSeconds
     respectInhibitors: true
-    onIsIdleChanged: isIdle ? root.beginCountdown() : root.endCountdown()
+    onIsIdleChanged: isIdle ? root.beginCountdown() : root.endCountdown("activity")
   }
 
-  onEnabledChanged: if (!enabled) endCountdown()
-  onIdleArmedChanged: if (!idleArmed) endCountdown()
+  onEnabledChanged: if (!enabled) endCountdown("disabled")
+  onIdleArmedChanged: if (!idleArmed) endCountdown("stay-awake")
+  onScreensaverActiveChanged: if (screensaverActive) endCountdown("screensaver-started")
+  onSessionLockedChanged: if (sessionLocked) endCountdown("session-locked")
 
   Timer {
     id: countdownTimer
@@ -160,6 +181,8 @@ Item {
         configured: root.configured,
         idleArmed: root.idleArmed,
         idle: idleMonitor.isIdle,
+        screensaverActive: root.screensaverActive,
+        sessionLocked: root.sessionLocked,
         warning: root.requestedWarningSeconds,
         effectiveWarning: root.warningSeconds,
         screensaver: root.screensaverSeconds,

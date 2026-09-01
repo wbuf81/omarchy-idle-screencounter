@@ -26,6 +26,14 @@ for entrypoint in Service.qml BarWidget.qml Panel.qml PlacementPicker.qml Logic.
 done
 
 test "$(stat -c %s assets/social/idle-screen-counter-share-card.png)" -lt 1048576
+
+# The popup must defer to Omarchy's actual lifecycle, not only its own
+# IdleMonitor. This prevents a late plugin reload from overlaying a running
+# screensaver or lock screen.
+rg -q 'screensaverStartedThisCycle' Service.qml
+rg -q 'screensaverWindowCount' Service.qml
+rg -q 'onScreensaverActiveChanged' Service.qml
+rg -q 'onSessionLockedChanged' Service.qml
 if find assets/demo -maxdepth 1 -type f -name 'screenrecording-*' | grep -q .; then
   echo "Static check failed: raw screen recording found in release assets" >&2
   exit 1
