@@ -7,7 +7,7 @@ cd "$project_dir"
 jq -e '
   .schemaVersion == 1 and
   .id == "io.github.wbuf81.idle-screencounter" and
-  .version == "1.0.0" and
+  .version == "1.0.1" and
   .license == "MIT" and
   (.kinds | index("service")) != null and
   (.kinds | index("bar-widget")) != null and

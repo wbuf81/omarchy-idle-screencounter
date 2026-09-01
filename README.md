@@ -192,7 +192,9 @@ Before a release, manually sanity-check:
 
 Bug reports, vibey ideas, theme screenshots, and pull requests are welcome. See
 [CONTRIBUTING.md](CONTRIBUTING.md) for the development loop and design
-principles. Changes are tracked in [CHANGELOG.md](CHANGELOG.md).
+principles. Changes are tracked in [CHANGELOG.md](CHANGELOG.md), and durable
+release and architecture handoff details live in
+[MAINTAINER_NOTES.md](MAINTAINER_NOTES.md).
 
 ## Share it
 
