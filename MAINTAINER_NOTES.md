@@ -11,8 +11,10 @@ changes still belong in `CHANGELOG.md`.
 - The repository was clean and matched `origin/main` when these notes were
   written on September 1, 2026.
 - The README records **Omarchy 4.0.2** as the tested platform.
-- No local Git tag for 1.0.1 was present when these notes were written. Confirm
-  the remote GitHub release/tag state before publishing or announcing it.
+- The public `v1.0.1` Git tag points to commit `20068f2`; the later maintainer
+  documentation commit does not change the packaged plugin runtime.
+- The root `preview.png` is the marketplace preview and contains a visible
+  version label. Refresh it when the displayed version changes.
 
 ## v1.0.1 lifecycle fix
 
@@ -69,7 +71,8 @@ completed. Before tagging the release, record or repeat these focused checks:
 4. Run `./scripts/release-check.sh` and the README's manual checks on the target
    Omarchy version.
 5. Update the tested-version badge in `README.md` when appropriate.
-6. Commit the release, create the matching Git tag, and verify the remote
+6. Refresh `preview.png` if its visible version label is changing.
+7. Commit the release, create the matching Git tag, and verify the remote
    release state.
-7. Update this file if a new architectural constraint or unfinished item would
+8. Update this file if a new architectural constraint or unfinished item would
    otherwise be easy to forget.

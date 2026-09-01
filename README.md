@@ -198,7 +198,8 @@ release and architecture handoff details live in
 
 ## Share it
 
-The repository-ready 1280×640 social card lives at
+The marketplace-ready 1280×640 preview lives at [`preview.png`](preview.png).
+The GitHub social card lives at
 [`assets/social/idle-screen-counter-share-card.png`](assets/social/idle-screen-counter-share-card.png).
 Upload it under **GitHub → Settings → General → Social preview**.
 
