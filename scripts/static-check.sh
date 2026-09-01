@@ -16,8 +16,8 @@ jq -e '
 ' manifest.json >/dev/null
 
 for entrypoint in Service.qml BarWidget.qml Panel.qml PlacementPicker.qml Logic.js README.md LICENSE \
-  assets/demo/idle-screen-counter-demo.gif \
-  assets/demo/idle-screen-counter-demo.mp4 \
+  assets/demo/idle-screen-counter-demo-clean.gif \
+  assets/demo/idle-screen-counter-demo-clean.mp4 \
   assets/screenshots/countdown-popup.webp \
   assets/screenshots/settings-panel.webp \
   assets/screenshots/placement-bottom-right.webp \
