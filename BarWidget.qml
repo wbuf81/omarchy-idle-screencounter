@@ -22,27 +22,32 @@ BarWidget {
     root.settings = normalized
     if (!root.bar || !root.bar.shell) return
     var shell = root.bar.shell
-    if (typeof shell.mutateShellConfig !== "function") {
-      shell.updateEntryInline(root.moduleName, normalized)
-      return
-    }
     // Keep Omarchy's actual idle service in lockstep with the controls. The
     // warning remains this plugin's own setting; screensaver and lock are
     // shared system deadlines and therefore live under top-level `idle`.
-    shell.mutateShellConfig(function(config) {
-      if (!config.bar) config.bar = { layout: { left: [], center: [], right: [] } }
-      if (!config.bar.layout) config.bar.layout = { left: [], center: [], right: [] }
-      var sections = ["left", "center", "right"]
-      for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
-        var entries = config.bar.layout[sections[sectionIndex]] || []
-        for (var index = 0; index < entries.length; index++) {
-          if (entries[index] && entries[index].id === root.moduleName) entries[index] = normalized
+    // Only a shell that hands us the whole config can do that. Newer shells
+    // give third-party widgets a scoped API whose mutateShellConfig exists
+    // but returns false, so fall through to the entry-only write there.
+    // Older shells return nothing from a successful mutation.
+    var persisted = false
+    if (typeof shell.mutateShellConfig === "function") {
+      persisted = shell.mutateShellConfig(function(config) {
+        if (!config || !config.bar || !config.bar.layout) return
+        var sections = ["left", "center", "right"]
+        for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
+          var entries = config.bar.layout[sections[sectionIndex]] || []
+          for (var index = 0; index < entries.length; index++) {
+            if (entries[index] && entries[index].id === root.moduleName) entries[index] = normalized
+          }
         }
-      }
-      if (!config.idle) config.idle = ({})
-      config.idle.screensaver = Number(normalized.screensaverSeconds)
-      config.idle.lock = Number(normalized.lockSeconds)
-    })
+        if (!config.idle) config.idle = ({})
+        config.idle.screensaver = Number(normalized.screensaverSeconds)
+        config.idle.lock = Number(normalized.lockSeconds)
+      }) !== false
+    }
+    if (!persisted && typeof shell.updateEntryInline === "function") {
+      shell.updateEntryInline(root.moduleName, normalized)
+    }
   }
 
   function toggleEnabled() {

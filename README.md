@@ -3,7 +3,7 @@
 
   <br>
 
-  <a href="https://omarchy.org/"><img src="https://img.shields.io/badge/Omarchy-4.0.2_tested-7aa2f7?style=flat-square" alt="Tested on Omarchy 4.0.2"></a>
+  <a href="https://omarchy.org/"><img src="https://img.shields.io/badge/Omarchy-4.0.3_tested-7aa2f7?style=flat-square" alt="Tested on Omarchy 4.0.3"></a>
   <a href="https://quickshell.org/"><img src="https://img.shields.io/badge/QML-Quickshell-f776c6?style=flat-square" alt="Built with QML and Quickshell"></a>
   <a href="https://github.com/wbuf81/omarchy-idle-screencounter/actions"><img src="https://img.shields.io/github/actions/workflow/status/wbuf81/omarchy-idle-screencounter/ci.yml?style=flat-square&amp;label=checks" alt="Checks status"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-b4f9f8?style=flat-square" alt="MIT license"></a>
@@ -13,8 +13,10 @@
 
 Idle Screen Counter is a native Omarchy shell plugin with an old railway-board
 soul. After a configurable amount of idle time, it floats above your work and
-counts down on mechanical split-flap tiles. Move the mouse or press a key and it
-vanishes instantly.
+counts down on mechanical flip tiles: a Solari departure board, a Vestaboard of
+flip bits, an odometer drum, a radar sweep, or a stepped terminal flap. Pick a
+favorite or let it surprise you with a different board each time. Move the
+mouse or press a key and it vanishes instantly.
 
 It does not dim the desktop, block clicks, steal focus, or replace Omarchy's
 screensaver and lock services. It simply makes the transition visible—and much
@@ -37,8 +39,15 @@ more fun.
   Omarchy's real idle configuration instead of running a competing scheduler.
 - **Respectful of the system.** Stay Awake and standard idle inhibitors disarm
   the warning along with Omarchy's own screensaver.
-- **Delightfully mechanical.** Each changing character collapses into its
-  hinge, drops the next lower flap, rebounds, and flashes the themed hinge.
+- **Delightfully mechanical.** Five boards, one setting. Solari folds the old
+  digit down on a perspective hinge and chatters through the digits between;
+  Vestaboard turns a 5×7 grid of flip bits in a wave; Drum rolls an odometer
+  into its detent; Sweep paints the new digit behind a radar scan bar; Stepped
+  flips in five hard frames like a terminal. `random` plays a different one
+  each time the warning appears.
+- **Drawn like the shell.** Hairline rules, the theme's monospace face,
+  uppercase captions, a darker well behind the tiles, and a blinking block
+  cursor. Corner radius, colors, and font follow your theme.
 - **Friendly to real desktops.** It follows the focused monitor, clamps popup
   positions to smaller outputs, and supports seven visual landing spots.
 
@@ -84,17 +93,32 @@ omarchy plugin remove io.github.wbuf81.idle-screencounter
 
 ## Make it yours
 
-The settings panel is designed for experimentation rather than precision mouse
-acrobatics:
+The settings panel is a station board of its own, designed for experimentation
+rather than precision mouse acrobatics:
 
+- Read the armed timeline in the header: `ARMED · 02:00 → 10:00 → 20:00`.
+- Watch a live miniature of the popup at the top of the panel. Under `random` it
+  tours the five boards; click it to preview on your desktop.
+- Pick a **flip style**: 01 Solari, 02 Vestaboard, 03 Drum, 04 Sweep,
+  05 Stepped, or Random. Hover a tile to see it on the miniature, click to
+  preview it full size.
 - Choose whether sliders snap every **15 seconds**, **30 seconds**, or **one minute**.
-- Jump instantly to useful presets below every slider.
-- Watch the live time readout while dragging.
-- Click **Popup position** to pick a location on an interactive mini desktop.
-- Click **Preview countdown** to run the real ten-second flap animation. Preview
-  mode is clearly labeled and never starts an idle action.
+- Jump to presets inline on every timeline row and watch the readout while
+  dragging.
+- Open the **landing spot** picker to choose a placement on an interactive mini
+  desktop.
+- Press **Preview** to run the real ten-second board. Preview mode is clearly
+  labeled and never starts an idle action.
 - Disable only the visual countdown without disabling Omarchy's normal
   screensaver or lock behavior.
+
+Everything can also be set from `shell.json` on the plugin's bar entry:
+
+| Key | Values | Default |
+| --- | --- | --- |
+| `flipStyle` | `solari`, `bits`, `drum`, `sweep`, `step`, `random` | `random` |
+| `placement` | `top-left`, `top`, `top-right`, `center`, `bottom-left`, `bottom`, `bottom-right` | `center` |
+| `snapSeconds` | `15`, `30`, `60` | `30` |
 
 The panel always preserves `warning < screensaver < lock`. Moving one deadline
 through another automatically nudges the neighboring deadline to a valid value.
@@ -181,11 +205,13 @@ Before a release, manually sanity-check:
 
 | File | Responsibility |
 | --- | --- |
-| `Service.qml` | Idle monitoring, preview, focused-monitor popup, and split-flap rendering |
+| `Service.qml` | Idle monitoring, preview, focused-monitor popup, per-show board selection |
+| `FlipBoard.qml` | Lays out a value as flip tiles in one of the five styles; pure QtQuick |
+| `FlipSolari.qml`, `FlipBits.qml`, `FlipDrum.qml`, `FlipSweep.qml`, `FlipStep.qml` | One board style each, all sharing the same tile interface |
 | `BarWidget.qml` | Bar icon, panel loading, settings persistence, and Omarchy idle synchronization |
-| `Panel.qml` | Native settings UI, snapping, presets, preview, and timeline editing |
+| `Panel.qml` | Station-style settings UI: live miniature board, style picker, timeline rows, preview |
 | `PlacementPicker.qml` | Interactive themed mini-desktop placement chooser |
-| `Logic.js` | Tested normalization, timeline, placement, and formatting rules |
+| `Logic.js` | Tested normalization, timeline, placement, flip-style selection, and formatting rules |
 | `manifest.json` | Omarchy plugin metadata, entry points, defaults, and schema |
 
 ## Contributing

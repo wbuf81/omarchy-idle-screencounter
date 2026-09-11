@@ -19,7 +19,7 @@ Item {
     width: parent.width
     height: Math.round(width * 0.58)
     color: Util.alpha(root.foreground, 0.035)
-    radius: Math.max(Style.cornerRadius, Style.space(5))
+    radius: Style.cornerRadius
     borderSpec: Border.flat(Util.alpha(root.foreground, 0.34), Math.max(1, Style.space(2)))
     clip: true
 

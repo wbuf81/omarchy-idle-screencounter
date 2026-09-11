@@ -20,7 +20,8 @@ Item {
   // Omarchy's idle service is authoritative for these two deadlines. The
   // settings panel writes them too, but reading the central config means a
   // manual shell.json edit is respected immediately.
-  readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle : ({})
+  readonly property var idleConfig: shell && shell.shellConfig && shell.shellConfig.idle ? shell.shellConfig.idle
+    : (shell && shell.idleConfig ? shell.idleConfig : ({}))
   readonly property int screensaverSeconds: Logic.seconds(idleConfig.screensaver, Logic.seconds(setting("screensaverSeconds", 600), 600))
   readonly property int lockSeconds: Logic.seconds(idleConfig.lock, Logic.seconds(setting("lockSeconds", 1200), 1200))
   readonly property var timeline: Logic.timeline(requestedWarningSeconds, screensaverSeconds, lockSeconds)
@@ -44,6 +45,13 @@ Item {
     omarchyLock.locked === true || omarchyLock.lockRequested === true
   )
   readonly property string placement: Logic.normalizedPlacement(setting("placement", "center"))
+  readonly property string flipStyle: Logic.normalizedFlipStyle(setting("flipStyle", "random"))
+  // The board that plays for the current appearance. Chosen once per show so
+  // a countdown never changes character halfway through.
+  property string activeStyle: "solari"
+  property string lastStyle: ""
+  property string previewStyle: ""
+  readonly property string activeStyleLabel: Logic.flipStyleLabel(activeStyle)
   // Countdown is a notification-like surface, so prefer the theme's semantic
   // countdown color over assuming its generic accent is always appropriate.
   readonly property color countdownAccent: Color.notifications.countdown
@@ -73,8 +81,11 @@ Item {
   // This plugin is enabled through its bar-widget entry. Read that same entry
   // so the service and its settings panel always agree without a second config.
   function entryForPlugin() {
-    var shellConfig = shell && shell.shellConfig ? shell.shellConfig : ({})
-    var layout = shellConfig.bar && shellConfig.bar.layout ? shellConfig.bar.layout : ({})
+    // Newer shells hand third-party services a scoped API that exposes the
+    // bar config directly and no longer carries the whole shell config.
+    var barConfig = shell && shell.barConfig ? shell.barConfig
+      : (shell && shell.shellConfig && shell.shellConfig.bar ? shell.shellConfig.bar : ({}))
+    var layout = barConfig && barConfig.layout ? barConfig.layout : ({})
     var sections = ["left", "center", "right"]
     for (var sectionIndex = 0; sectionIndex < sections.length; sectionIndex++) {
       var entries = layout[sections[sectionIndex]] || []
@@ -123,13 +134,38 @@ Item {
     if (wasCounting) console.log("idle-screen-counter countdown-cancelled " + String(reason || "activity"))
   }
 
-  function preview(position) {
+  function chooseStyle(explicit) {
+    var chosen
+    if (explicit) chosen = Logic.normalizedFlipStyle(explicit)
+    else if (previewVisible && flipStyle === "random") chosen = Logic.nextFlipStyle(lastStyle)
+    else chosen = Logic.flipStyleForShow(flipStyle, lastStyle, Math.random())
+    if (chosen === "random") chosen = Logic.nextFlipStyle(lastStyle)
+    lastStyle = chosen
+    activeStyle = chosen
+  }
+
+  // `style` is optional: the settings panel passes the board it wants to
+  // show; a bare preview under "random" tours the boards in order.
+  function preview(position, style) {
     previewPlacement = Logic.normalizedPlacement(position || placement)
+    previewStyle = style ? String(style) : ""
     previewSeconds = 10
     previewVisible = true
+    chooseStyle(previewStyle)
     previewTimer.restart()
-    console.log("idle-screen-counter preview " + previewPlacement)
+    console.log("idle-screen-counter preview " + previewPlacement + " style=" + activeStyle)
   }
+
+  // Every board pick bumps the generation so the popup rebuilds its tiles
+  // instead of animating from whatever value the previous board showed.
+  property int boardGeneration: 0
+  onActiveStyleChanged: boardGeneration += 1
+
+  // Real countdowns pick their board here; previews pick theirs in preview().
+  onPopupVisibleChanged: if (popupVisible && !previewVisible) chooseStyle("")
+  // A preview that ends while the real warning is up hands over to a fresh
+  // board for the live countdown.
+  onPreviewVisibleChanged: if (!previewVisible && popupVisible) { chooseStyle(""); boardGeneration += 1 }
 
   IdleMonitor {
     id: idleMonitor
@@ -171,7 +207,12 @@ Item {
     target: "idle-screen-counter"
 
     function preview(position: string): string {
-      root.preview(position)
+      root.preview(position, "")
+      return "ok"
+    }
+
+    function previewStyle(style: string): string {
+      root.preview(root.placement, style)
       return "ok"
     }
 
@@ -190,6 +231,8 @@ Item {
         nextEvent: root.nextEventIsLock ? "lock" : "screensaver",
         remaining: root.remainingSeconds,
         visible: root.popupVisible,
+        flipStyle: root.flipStyle,
+        activeStyle: root.activeStyle,
         placement: root.effectivePlacement
       })
     }
@@ -217,8 +260,8 @@ Item {
       mask: Region {}
       Item {
         id: card
-        width: Math.min(Style.space(480), Math.max(1, parent.width - Style.space(32)))
-        height: Style.space(216)
+        width: Math.min(Style.space(500), Math.max(1, parent.width - Style.space(32)))
+        height: content.implicitHeight + Style.space(34)
         anchors.centerIn: parent
         readonly property real safeHorizontalOffset: Math.min(parent.width * 0.30, Math.max(0, (parent.width - width) / 2 - Style.space(24)))
         readonly property real safeVerticalOffset: Math.min(parent.height * 0.29, Math.max(0, (parent.height - height) / 2 - Style.space(24)))
@@ -227,352 +270,163 @@ Item {
         anchors.verticalCenterOffset: root.effectivePlacement.indexOf("top") !== -1 ? -safeVerticalOffset
           : root.effectivePlacement.indexOf("bottom") !== -1 ? safeVerticalOffset : 0
 
+        // Flat station-board palette derived from the popup theme tokens.
+        readonly property color ink: Color.popups.text
+        readonly property color dim: Util.alpha(ink, 0.55)
+        readonly property color line: Util.alpha(ink, 0.16)
+        readonly property color well: Qt.darker(Color.popups.background, 1.35)
+
         BorderSurface {
           anchors.fill: parent
-          radius: Style.cornerRadius * 1.5
-          color: Util.alpha(Color.popups.background, 0.96)
-          borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.space(2)))
+          radius: Style.cornerRadius
+          color: Util.alpha(Color.popups.background, 0.97)
+          borderSpec: Border.surfaceSpec("popups", "border", Color.popups.border, Math.max(1, Style.normalBorderWidth))
         }
 
-        Rectangle {
-          anchors.left: parent.left
-          anchors.right: parent.right
-          anchors.top: parent.top
-          height: Math.max(2, Style.space(3))
-          radius: height / 2
-          color: root.countdownAccent
+        component Caption: Text {
+          textFormat: Text.PlainText
+          color: card.dim
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          font.letterSpacing: 1.6
+          font.capitalization: Font.AllUppercase
+          elide: Text.ElideRight
+        }
+
+        component Rule: Rectangle {
+          width: parent.width
+          height: 1
+          color: card.line
         }
 
         Column {
-          anchors.fill: parent
-          anchors.margins: Style.space(22)
-          spacing: Style.space(9)
+          id: content
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.leftMargin: Style.space(20)
+          anchors.rightMargin: Style.space(20)
+          spacing: Style.space(10)
 
-          Row {
+          // Station row: what this is, and what is coming.
+          Item {
             width: parent.width
-            spacing: Style.space(8)
-            anchors.horizontalCenter: parent.horizontalCenter
+            height: Math.max(headLeft.implicitHeight, headRight.implicitHeight)
 
-            Rectangle {
-              width: Style.space(7)
-              height: width
-              radius: width / 2
-              color: root.countdownAccent
+            Row {
+              id: headLeft
+              anchors.left: parent.left
               anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(7)
+              Rectangle {
+                width: Style.space(5); height: width
+                anchors.verticalCenter: parent.verticalCenter
+                color: root.countdownAccent
+                SequentialAnimation on opacity {
+                  running: root.popupVisible
+                  loops: Animation.Infinite
+                  PropertyAction { value: 1 }
+                  PauseAnimation { duration: 550 }
+                  PropertyAction { value: 0 }
+                  PauseAnimation { duration: 550 }
+                }
+              }
+              Caption {
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Idle warning"
+                color: card.ink
+                font.bold: true
+              }
+            }
+
+            Row {
+              id: headRight
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(6)
+              Caption {
+                text: root.previewVisible ? "Preview" : "Live"
+                color: root.countdownAccent
+              }
+              Caption { text: "·" }
+              Caption { text: root.activeStyleLabel }
+            }
+          }
+
+          Rule {}
+
+          Caption {
+            width: parent.width
+            topPadding: Style.space(4)
+            horizontalAlignment: Text.AlignHCenter
+            text: root.previewVisible
+              ? "Your screensaver would start in"
+              : (root.nextEventIsLock ? "Your session locks in" : "Your screensaver starts in")
+          }
+
+          // A fresh board per appearance: tiles settle silently on the first
+          // value and the chosen style never carries over between shows.
+          Item {
+            width: parent.width
+            height: Style.space(80) + Style.space(8)
+
+            Loader {
+              id: boardLoader
+              anchors.centerIn: parent
+              active: popupWindow.visible
+              Connections {
+                target: root
+                function onBoardGenerationChanged() {
+                  if (!boardLoader.active) return
+                  boardLoader.active = false
+                  boardLoader.active = Qt.binding(function() { return popupWindow.visible })
+                }
+              }
+              sourceComponent: FlipBoard {
+                style: root.activeStyle
+                value: root.format(root.displaySeconds)
+                tileWidth: Style.space(62)
+                tileHeight: Style.space(80)
+                gap: Style.space(7)
+                foreground: card.ink
+                accent: root.countdownAccent
+                dim: card.dim
+                line: card.line
+                well: card.well
+                fontFamily: Style.font.family
+                animated: popupWindow.visible
+              }
+            }
+          }
+
+          Rule {}
+
+          Item {
+            width: parent.width
+            height: footLeft.implicitHeight
+
+            Caption {
+              id: footLeft
+              anchors.left: parent.left
+              anchors.right: cursor.left
+              anchors.rightMargin: Style.space(12)
+              text: root.previewVisible ? "Preview only · nothing will start" : "Move mouse or press any key to stay active"
+            }
+            Rectangle {
+              id: cursor
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              width: Math.max(4, Style.space(6))
+              height: footLeft.implicitHeight
+              color: root.countdownAccent
               SequentialAnimation on opacity {
                 running: root.popupVisible
                 loops: Animation.Infinite
-                NumberAnimation { from: 1; to: 0.35; duration: 850 }
-                NumberAnimation { from: 0.35; to: 1; duration: 850 }
+                PropertyAction { value: 1 }
+                PauseAnimation { duration: 550 }
+                PropertyAction { value: 0 }
+                PauseAnimation { duration: 550 }
               }
-            }
-            Text {
-              text: root.previewVisible ? "COUNTDOWN PREVIEW" : "IDLE WARNING"
-              color: Color.popups.text
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 2.0
-            }
-          }
-
-          Text {
-            width: parent.width
-            text: root.previewVisible
-              ? "YOUR SCREENSAVER WOULD START IN"
-              : (root.nextEventIsLock ? "YOUR SESSION LOCKS IN" : "YOUR SCREENSAVER STARTS IN")
-            color: Color.popups.text
-            font.family: Style.font.family
-            font.pixelSize: Style.font.subtitle
-            font.bold: true
-            font.letterSpacing: 1.5
-            horizontalAlignment: Text.AlignHCenter
-          }
-
-          Row {
-            id: digits
-            anchors.horizontalCenter: parent.horizontalCenter
-            spacing: Style.space(7)
-            property string value: root.format(root.displaySeconds)
-
-            Repeater {
-              model: 5
-              delegate: Item {
-                id: digitSlot
-                required property int index
-                property string character: digits.value.charAt(index)
-                width: character === ":" ? Style.space(15) : Style.space(62)
-                height: Style.space(78)
-
-                Text {
-                  visible: digitSlot.character === ":"
-                  anchors.centerIn: parent
-                  text: digitSlot.character
-                  color: root.countdownAccent
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.displayLarge
-                  font.bold: true
-                }
-
-                Item {
-                  id: digitFace
-                  visible: digitSlot.character !== ":"
-                  anchors.fill: parent
-                  property string currentCharacter: ""
-                  property string previousCharacter: ""
-                  property real topFlapScale: 1
-                  property real bottomFlapScale: 0.02
-                  property bool topFlapVisible: false
-                  property bool bottomFlapVisible: false
-                  property real hingeGlow: 0.38
-
-                  function animateTo(nextCharacter) {
-                    if (nextCharacter === ":" || nextCharacter === currentCharacter) return
-                    previousCharacter = currentCharacter === "" ? nextCharacter : currentCharacter
-                    currentCharacter = nextCharacter
-                    flip.restart()
-                  }
-
-                  Component.onCompleted: currentCharacter = digitSlot.character
-                  Connections {
-                    target: digitSlot
-                    function onCharacterChanged() { digitFace.animateTo(digitSlot.character) }
-                  }
-
-                  SequentialAnimation {
-                    id: flip
-                    ScriptAction { script: {
-                      digitFace.topFlapScale = 1
-                      digitFace.bottomFlapScale = 0.02
-                      digitFace.hingeGlow = 1
-                      digitFace.topFlapVisible = true
-                      digitFace.bottomFlapVisible = false
-                    } }
-                    NumberAnimation {
-                      target: digitFace
-                      property: "topFlapScale"
-                      from: 1
-                      to: 0.02
-                      duration: 210
-                      easing.type: Easing.InCubic
-                    }
-                    ScriptAction { script: {
-                      digitFace.topFlapVisible = false
-                      digitFace.bottomFlapVisible = true
-                    } }
-                    NumberAnimation {
-                      target: digitFace
-                      property: "bottomFlapScale"
-                      from: 0.02
-                      to: 1.12
-                      duration: 235
-                      easing.type: Easing.OutCubic
-                    }
-                    NumberAnimation {
-                      target: digitFace
-                      property: "bottomFlapScale"
-                      from: 1.12
-                      to: 1
-                      duration: 105
-                      easing.type: Easing.OutBack
-                    }
-                    ParallelAnimation {
-                      NumberAnimation {
-                        target: digitFace
-                        property: "hingeGlow"
-                        to: 0.38
-                        duration: 160
-                      }
-                      SequentialAnimation {
-                        PauseAnimation { duration: 75 }
-                        ScriptAction { script: digitFace.bottomFlapVisible = false }
-                      }
-                    }
-                  }
-
-                  Rectangle {
-                    anchors.fill: parent
-                    radius: Style.space(5)
-                    color: Util.alpha(Color.background, 0.72)
-                    border.color: Util.alpha(root.countdownAccent, 0.42)
-                    border.width: Math.max(1, Style.space(1))
-                  }
-
-                  Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    anchors.margins: Math.max(1, Style.space(2))
-                    height: parent.height / 2 - anchors.margins
-                    radius: Style.space(4)
-                    color: Style.normalFillFor(Color.popups.text, root.countdownAccent)
-                  }
-
-                  Rectangle {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    anchors.margins: Math.max(1, Style.space(2))
-                    height: parent.height / 2 - anchors.margins
-                    radius: Style.space(4)
-                    color: Util.alpha(root.countdownAccent, 0.055)
-                  }
-
-                  // The settled character is painted as two clipped halves.
-                  // When the value changes, an old upper flap folds away and a
-                  // new lower flap swings down over these stationary faces.
-                  Item {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    height: parent.height / 2
-                    clip: true
-                    Text {
-                      width: digitFace.width
-                      height: digitFace.height
-                      text: digitFace.currentCharacter
-                      color: Color.popups.text
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.displayLarge
-                      font.bold: true
-                      horizontalAlignment: Text.AlignHCenter
-                      verticalAlignment: Text.AlignVCenter
-                    }
-                  }
-
-                  Item {
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: parent.height / 2
-                    clip: true
-                    Text {
-                      y: -digitFace.height / 2
-                      width: digitFace.width
-                      height: digitFace.height
-                      text: digitFace.currentCharacter
-                      color: Color.popups.text
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.displayLarge
-                      font.bold: true
-                      horizontalAlignment: Text.AlignHCenter
-                      verticalAlignment: Text.AlignVCenter
-                    }
-                  }
-
-                  Item {
-                    id: upperFlap
-                    z: 2
-                    visible: digitFace.topFlapVisible
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.top: parent.top
-                    height: parent.height / 2
-                    clip: true
-                    transform: Scale {
-                      origin.x: upperFlap.width / 2
-                      origin.y: upperFlap.height
-                      yScale: digitFace.topFlapScale
-                    }
-                    Rectangle {
-                      anchors.fill: parent
-                      color: Util.alpha(Color.background, 0.96)
-                    }
-                    Text {
-                      width: digitFace.width
-                      height: digitFace.height
-                      text: digitFace.previousCharacter
-                      color: Color.popups.text
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.displayLarge
-                      font.bold: true
-                      horizontalAlignment: Text.AlignHCenter
-                      verticalAlignment: Text.AlignVCenter
-                    }
-                  }
-
-                  Item {
-                    id: lowerFlap
-                    z: 2
-                    visible: digitFace.bottomFlapVisible
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.bottom: parent.bottom
-                    height: parent.height / 2
-                    clip: true
-                    transform: Scale {
-                      origin.x: lowerFlap.width / 2
-                      origin.y: 0
-                      yScale: digitFace.bottomFlapScale
-                    }
-                    Rectangle {
-                      anchors.fill: parent
-                      color: Util.alpha(Color.background, 0.96)
-                    }
-                    Text {
-                      y: -digitFace.height / 2
-                      width: digitFace.width
-                      height: digitFace.height
-                      text: digitFace.currentCharacter
-                      color: Color.popups.text
-                      font.family: Style.font.family
-                      font.pixelSize: Style.font.displayLarge
-                      font.bold: true
-                      horizontalAlignment: Text.AlignHCenter
-                      verticalAlignment: Text.AlignVCenter
-                    }
-                  }
-
-                  Rectangle {
-                    z: 3
-                    anchors.left: parent.left
-                    anchors.right: parent.right
-                    anchors.verticalCenter: parent.verticalCenter
-                    height: Math.max(1, Style.space(2))
-                    color: Util.alpha(root.countdownAccent, digitFace.hingeGlow)
-                  }
-
-                  Rectangle {
-                    z: 4
-                    width: Math.max(2, Style.space(4))
-                    height: width
-                    radius: width / 2
-                    anchors.left: parent.left
-                    anchors.leftMargin: Style.space(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.countdownAccent
-                  }
-
-                  Rectangle {
-                    z: 4
-                    width: Math.max(2, Style.space(4))
-                    height: width
-                    radius: width / 2
-                    anchors.right: parent.right
-                    anchors.rightMargin: Style.space(4)
-                    anchors.verticalCenter: parent.verticalCenter
-                    color: root.countdownAccent
-                  }
-                }
-              }
-            }
-          }
-
-          BorderSurface {
-            width: parent.width
-            height: Style.space(28)
-            radius: Style.cornerRadius
-            color: Style.selectedFillFor(Color.popups.text, root.countdownAccent)
-            borderSpec: Border.controlSpec("selected", Color.popups.text, root.countdownAccent)
-
-            Text {
-              anchors.centerIn: parent
-              text: root.previewVisible ? "󰏫  PREVIEW ONLY · NOTHING WILL START" : "󰍽  MOVE MOUSE OR PRESS ANY KEY TO STAY ACTIVE"
-              color: Style.selectedStateColor(Color.popups.text, root.countdownAccent)
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 0.8
             }
           }
         }
@@ -580,5 +434,5 @@ Item {
     }
   }
 
-  Component.onCompleted: console.log("idle-screen-counter ready warning=" + warningSeconds + " screensaver=" + screensaverSeconds + " placement=" + placement)
+  Component.onCompleted: console.log("idle-screen-counter ready warning=" + warningSeconds + " screensaver=" + screensaverSeconds + " placement=" + placement + " flipStyle=" + flipStyle)
 }

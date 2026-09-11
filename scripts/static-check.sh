@@ -7,7 +7,7 @@ cd "$project_dir"
 jq -e '
   .schemaVersion == 1 and
   .id == "io.github.wbuf81.idle-screencounter" and
-  .version == "1.0.1" and
+  .version == "2.0.0" and
   .license == "MIT" and
   (.kinds | index("service")) != null and
   (.kinds | index("bar-widget")) != null and
@@ -16,6 +16,7 @@ jq -e '
 ' manifest.json >/dev/null
 
 for entrypoint in Service.qml BarWidget.qml Panel.qml PlacementPicker.qml Logic.js README.md LICENSE \
+  FlipBoard.qml FlipSolari.qml FlipBits.qml FlipDrum.qml FlipSweep.qml FlipStep.qml \
   assets/demo/idle-screen-counter-demo-clean.gif \
   assets/demo/idle-screen-counter-demo-clean.mp4 \
   assets/screenshots/countdown-popup.webp \
@@ -36,6 +37,12 @@ grep -Fq 'screensaverStartedThisCycle' Service.qml
 grep -Fq 'screensaverWindowCount' Service.qml
 grep -Fq 'onScreensaverActiveChanged' Service.qml
 grep -Fq 'onSessionLockedChanged' Service.qml
+# Every board the picker offers must exist on disk, and the popup must pick
+# one per appearance through the shared pure logic.
+for style in solari bits drum sweep step; do
+  test -s "Flip$(tr '[:lower:]' '[:upper:]' <<< "${style:0:1}")${style:1}.qml"
+done
+grep -Fq 'flipStyleForShow' Service.qml
 if find assets/demo -maxdepth 1 -type f -name 'screenrecording-*' | grep -q .; then
   echo "Static check failed: raw screen recording found in release assets" >&2
   exit 1

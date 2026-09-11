@@ -22,7 +22,27 @@ Panel {
   readonly property int lockSeconds: counter ? Number(counter.lockSeconds) : intSetting("lockSeconds", 1200)
   readonly property int snapSeconds: intSetting("snapSeconds", 30)
   readonly property string placement: String(setting("placement", "center"))
+  readonly property string flipStyle: Logic.normalizedFlipStyle(setting("flipStyle", "random"))
   readonly property var counter: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
+  readonly property var timeline: Logic.timeline(warningSeconds, screensaverSeconds, lockSeconds)
+
+  // Station palette derived from the bar foreground, in omastorm's spirit:
+  // one ink, one dim, one hairline, the theme accent.
+  readonly property color ink: root.barForeground
+  readonly property color dim: Util.alpha(ink, 0.55)
+  readonly property color line: Util.alpha(ink, 0.14)
+  readonly property color well: Util.alpha(ink, 0.035)
+  readonly property color boardWell: Qt.darker(Color.popups.background, 1.35)
+
+  // The hero board: a live miniature of the popup. Under "random" it tours
+  // the boards; hovering a picker tile shows that board instead.
+  property string hoverStyle: ""
+  property string tourStyle: "solari"
+  readonly property string heroStyle: hoverStyle !== "" && hoverStyle !== "random" ? hoverStyle
+    : (flipStyle === "random" ? tourStyle : flipStyle)
+  property int heroSeconds: 0
+  // The host injects `settings` after construction; skip work until then.
+  property bool ready: false
 
   function intSetting(key, fallback) {
     var value = Number(setting(key, fallback))
@@ -33,7 +53,7 @@ Panel {
     var safe = Math.max(0, Math.round(value))
     var minutes = Math.floor(safe / 60)
     var seconds = safe % 60
-    return minutes + ":" + (seconds < 10 ? "0" : "") + seconds
+    return (minutes < 10 ? "0" : "") + minutes + ":" + (seconds < 10 ? "0" : "") + seconds
   }
 
   function placementLabel(value) {
@@ -58,21 +78,59 @@ Panel {
 
   function choosePlacement(value) {
     save("placement", value)
-    if (counter && typeof counter.preview === "function") counter.preview(value)
+    if (counter && typeof counter.preview === "function") counter.preview(value, root.heroStyle)
+  }
+
+  function chooseStyle(value) {
+    save("flipStyle", value)
+    if (counter && typeof counter.preview === "function") counter.preview(root.placement, value === "random" ? "" : value)
   }
 
   function previewPopup() {
-    if (counter && typeof counter.preview === "function") counter.preview(root.placement)
+    if (counter && typeof counter.preview === "function") counter.preview(root.placement, root.flipStyle === "random" ? "" : root.flipStyle)
   }
 
-  Component {
-    id: heroIcon
-    Text {
-      text: "󰒲"
-      color: root.barForeground
-      font.family: Style.font.family
-      font.pixelSize: Style.font.display
-    }
+  function resetHero() {
+    // Change handlers can fire while the panel is still constructing, before
+    // the timeline binding has a value.
+    var current = root.timeline
+    heroSeconds = current ? Math.max(1, current.countdownSeconds) : 1
+  }
+
+  onWarningSecondsChanged: if (ready) resetHero()
+  onScreensaverSecondsChanged: if (ready) resetHero()
+  onLockSecondsChanged: if (ready) resetHero()
+  onOpenedChanged: if (opened) { resetHero(); tourStyle = Logic.nextFlipStyle(tourStyle) }
+  Component.onCompleted: { ready = true; resetHero() }
+
+  Timer {
+    interval: 1000
+    running: root.opened
+    repeat: true
+    onTriggered: root.heroSeconds <= 1 ? root.resetHero() : root.heroSeconds -= 1
+  }
+
+  Timer {
+    interval: 6000
+    running: root.opened && root.flipStyle === "random" && root.hoverStyle === ""
+    repeat: true
+    onTriggered: root.tourStyle = Logic.nextFlipStyle(root.tourStyle)
+  }
+
+  component Caption: Text {
+    textFormat: Text.PlainText
+    color: root.dim
+    font.family: Style.font.family
+    font.pixelSize: Style.font.caption
+    font.letterSpacing: 1.4
+    font.capitalization: Font.AllUppercase
+    elide: Text.ElideRight
+  }
+
+  component Rule: Rectangle {
+    width: parent ? parent.width : 0
+    height: 1
+    color: root.line
   }
 
   Component {
@@ -91,7 +149,7 @@ Panel {
     owner: root
     bar: root.bar
     open: root.opened
-    contentWidth: fittedContentWidth(Style.space(470))
+    contentWidth: fittedContentWidth(Style.space(480))
     contentHeight: fittedContentHeight(root.choosingPlacement ? placementPage.implicitHeight : settingsPage.implicitHeight)
 
     Column {
@@ -100,225 +158,69 @@ Panel {
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      spacing: Style.space(14)
+      spacing: Style.space(12)
 
-      PanelHero {
-        iconComponent: heroIcon
-        title: "Idle screen counter"
-        meta: root.enabled ? "Ready for your next coffee break" : "Countdown paused"
-        detail: root.enabled ? "ON" : "OFF"
-        foreground: root.barForeground
-        trailingControl: enableSwitch
-      }
-
-      Text {
+      // ------------------------------------------------------ station row
+      Item {
         width: parent.width
-        text: "A gentle heads-up before Omarchy starts the screensaver and locks your session."
-        color: Qt.darker(root.barForeground, 1.45)
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
-      }
+        height: Math.max(stationLeft.implicitHeight, stationToggle.implicitHeight)
 
-      PanelSeparator { foreground: root.barForeground }
-      PanelSectionHeader { text: "IDLE TIMELINE"; foreground: root.barForeground }
-
-      CursorSurface {
-        width: parent.width
-        implicitHeight: snapContent.implicitHeight + Style.space(20)
-        bordered: true
-        foreground: root.barForeground
-
-        Column {
-          id: snapContent
+        Row {
+          id: stationLeft
           anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(8)
+          Rectangle {
+            width: Style.space(6); height: width
+            anchors.verticalCenter: parent.verticalCenter
+            color: root.enabled ? Color.accent : root.dim
+            SequentialAnimation on opacity {
+              running: root.opened && root.enabled
+              loops: Animation.Infinite
+              PropertyAction { value: 1 }
+              PauseAnimation { duration: 550 }
+              PropertyAction { value: 0 }
+              PauseAnimation { duration: 550 }
+            }
+          }
+          Text {
+            anchors.verticalCenter: parent.verticalCenter
+            text: "IDLE SCREEN COUNTER"
+            color: root.ink
+            font.family: Style.font.family
+            font.pixelSize: Style.font.title
+            font.bold: true
+            font.letterSpacing: 1.8
+          }
+        }
+
+        Loader {
+          id: stationToggle
+          sourceComponent: enableSwitch
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          anchors.leftMargin: Style.space(13)
-          anchors.rightMargin: Style.space(13)
-          spacing: Style.space(8)
+        }
 
-          Item {
-            width: parent.width
-            implicitHeight: Math.max(snapTitle.implicitHeight, snapGroup.implicitHeight)
-
-            Column {
-              id: snapTitle
-              anchors.left: parent.left
-              anchors.right: snapGroup.left
-              anchors.rightMargin: Style.space(12)
-              anchors.verticalCenter: parent.verticalCenter
-              spacing: Style.space(2)
-
-              Text {
-                width: parent.width
-                text: "Slider snap"
-                color: root.barForeground
-                font.family: Style.font.family
-                font.pixelSize: Style.font.subtitle
-                font.bold: true
-              }
-              Text {
-                width: parent.width
-                text: "Choose how precisely the handles move."
-                color: Qt.darker(root.barForeground, 1.5)
-                font.family: Style.font.family
-                font.pixelSize: Style.font.caption
-                elide: Text.ElideRight
-              }
-            }
-
-            ButtonGroup {
-              id: snapGroup
-              anchors.right: parent.right
-              anchors.verticalCenter: parent.verticalCenter
-              options: [
-                { value: "15", label: "15s" },
-                { value: "30", label: "30s" },
-                { value: "60", label: "1m" }
-              ]
-              value: String(root.snapSeconds)
-              foreground: root.barForeground
-              accent: Color.accent
-              fontSize: Style.font.bodySmall
-              onChanged: function(value) { root.save("snapSeconds", Number(value)) }
-            }
-          }
+        Caption {
+          anchors.left: stationLeft.right
+          anchors.leftMargin: Style.space(12)
+          anchors.right: stationToggle.left
+          anchors.rightMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          horizontalAlignment: Text.AlignRight
+          elide: Text.ElideMiddle
+          text: root.enabled ? "Armed" : "Paused"
+          color: root.enabled ? Color.accent : root.dim
         }
       }
 
-      Repeater {
-        model: [
-          { key: "warningSeconds", icon: "󰔟", label: "Show the countdown", description: "How long to wait before the split-flap warning appears.", value: root.warningSeconds, minimum: 15, maximum: 900, presets: [{value:"30",label:"30s"},{value:"60",label:"1m"},{value:"120",label:"2m"},{value:"300",label:"5m"}] },
-          { key: "screensaverSeconds", icon: "󰒲", label: "Start the screensaver", description: "The countdown reaches zero at this idle time.", value: root.screensaverSeconds, minimum: 30, maximum: 1800, presets: [{value:"60",label:"1m"},{value:"180",label:"3m"},{value:"300",label:"5m"},{value:"600",label:"10m"}] },
-          { key: "lockSeconds", icon: "󰌾", label: "Lock the session", description: "Require your password after this much idle time.", value: root.lockSeconds, minimum: 45, maximum: 3600, presets: [{value:"300",label:"5m"},{value:"600",label:"10m"},{value:"1200",label:"20m"},{value:"1800",label:"30m"}] }
-        ]
+      Rule {}
 
-        delegate: CursorSurface {
-          id: timingCard
-          required property var modelData
-          property real draftValue: modelData.value
-          width: parent.width
-          implicitHeight: timingContent.implicitHeight + Style.space(22)
-          bordered: true
-          foreground: root.barForeground
-
-          HoverHandler {}
-
-          Column {
-            id: timingContent
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.leftMargin: Style.space(13)
-            anchors.rightMargin: Style.space(13)
-            spacing: Style.space(9)
-
-            Item {
-              width: parent.width
-              implicitHeight: Math.max(timingIcon.implicitHeight, timingLabels.implicitHeight, timingValue.implicitHeight)
-
-              Text {
-                id: timingIcon
-                anchors.left: parent.left
-                anchors.verticalCenter: parent.verticalCenter
-                text: timingCard.modelData.icon
-                color: Color.accent
-                font.family: Style.font.family
-                font.pixelSize: Style.font.title
-              }
-
-              Column {
-                id: timingLabels
-                anchors.left: timingIcon.right
-                anchors.leftMargin: Style.space(11)
-                anchors.right: timingValue.left
-                anchors.rightMargin: Style.space(10)
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(2)
-
-                Text {
-                  width: parent.width
-                  text: timingCard.modelData.label
-                  color: root.barForeground
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.subtitle
-                  font.bold: true
-                  elide: Text.ElideRight
-                }
-                Text {
-                  width: parent.width
-                  text: timingCard.modelData.description
-                  color: Qt.darker(root.barForeground, 1.5)
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
-                }
-              }
-
-              BorderSurface {
-                id: timingValue
-                anchors.right: parent.right
-                anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: timingValueText.implicitWidth + Style.space(12)
-                implicitHeight: timingValueText.implicitHeight + Style.space(6)
-                radius: Style.cornerRadius
-                color: Style.selectedFillFor(root.barForeground, Color.accent)
-                borderSpec: Border.controlSpec("selected", root.barForeground, Color.accent)
-
-                Text {
-                  id: timingValueText
-                  anchors.centerIn: parent
-                  text: root.time(timingCard.draftValue)
-                  color: Style.selectedStateColor(root.barForeground, Color.accent)
-                  font.family: Style.font.family
-                  font.pixelSize: Style.font.body
-                  font.bold: true
-                }
-              }
-            }
-
-            PanelSlider {
-              id: timingSlider
-              bar: root.bar
-              width: parent.width
-              minimum: timingCard.modelData.minimum
-              maximum: timingCard.modelData.maximum
-              step: root.snapSeconds
-              integer: true
-              value: timingCard.modelData.value
-              onMoved: function(value) {
-                var snapped = root.snappedTime(value)
-                timingSlider.liveValue = snapped
-                timingCard.draftValue = snapped
-              }
-              onReleased: function(value) {
-                var snapped = root.snappedTime(value)
-                timingCard.draftValue = snapped
-                root.save(timingCard.modelData.key, snapped)
-              }
-            }
-
-            ButtonGroup {
-              anchors.horizontalCenter: parent.horizontalCenter
-              options: timingCard.modelData.presets
-              value: String(timingCard.modelData.value)
-              foreground: root.barForeground
-              accent: Color.accent
-              fontSize: Style.font.bodySmall
-              onChanged: function(value) { root.save(timingCard.modelData.key, Number(value)) }
-            }
-          }
-        }
-      }
-
-      PanelSeparator { foreground: root.barForeground }
-      PanelSectionHeader { text: "APPEARANCE"; foreground: root.barForeground }
-
+      // ------------------------------------------------------ hero board
       CursorSurface {
-        id: placementRow
+        id: hero
         width: parent.width
-        implicitHeight: Style.space(68)
+        implicitHeight: heroContent.implicitHeight + Style.space(28)
         bordered: true
         foreground: root.barForeground
 
@@ -327,118 +229,358 @@ Panel {
           anchors.fill: parent
           hoverEnabled: true
           cursorShape: Qt.PointingHandCursor
-          onClicked: root.choosingPlacement = true
+          onClicked: root.previewPopup()
         }
 
-        Item {
-          anchors.fill: parent
-          anchors.margins: Style.space(12)
+        Column {
+          id: heroContent
+          anchors.left: parent.left
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          anchors.leftMargin: Style.space(16)
+          anchors.rightMargin: Style.space(16)
+          spacing: Style.space(10)
 
-          Text {
-            id: placementIcon
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: "󰍹"
-            color: Color.accent
-            font.family: Style.font.family
-            font.pixelSize: Style.font.title
-          }
-
-          Column {
-            anchors.left: placementIcon.right
-            anchors.leftMargin: Style.space(11)
-            anchors.right: placementPreview.left
-            anchors.rightMargin: Style.space(12)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
-
-            Text {
-              width: parent.width
-              text: "Popup position"
-              color: root.barForeground
-              font.family: Style.font.family
-              font.pixelSize: Style.font.subtitle
-              font.bold: true
+          Item {
+            width: parent.width
+            height: heroHead.implicitHeight
+            Row {
+              id: heroHead
+              anchors.left: parent.left
+              spacing: Style.space(7)
+              Rectangle { width: Style.space(5); height: width; anchors.verticalCenter: parent.verticalCenter; color: Color.notifications.countdown }
+              Caption { text: root.enabled ? "Idle warning" : "Idle warning · off"; color: root.ink; font.bold: true }
             }
-            Text {
-              width: parent.width
-              text: root.placementLabel(root.placement) + " · Click to choose visually"
-              color: Qt.darker(root.barForeground, 1.5)
-              font.family: Style.font.family
-              font.pixelSize: Style.font.caption
-              elide: Text.ElideRight
+            Row {
+              anchors.right: parent.right
+              spacing: Style.space(6)
+              Caption { text: (Logic.FLIP_STYLES.indexOf(root.heroStyle) + 1).toString().padStart(2, "0"); color: Color.accent }
+              Caption { text: Logic.flipStyleLabel(root.heroStyle) }
+              Caption { visible: root.flipStyle === "random" && root.hoverStyle === ""; text: "· touring" }
             }
           }
 
-          BorderSurface {
-            id: placementPreview
-            anchors.right: arrow.left
-            anchors.rightMargin: Style.space(10)
-            anchors.verticalCenter: parent.verticalCenter
-            width: Style.space(52)
-            height: Style.space(32)
-            color: Util.alpha(root.barForeground, 0.04)
-            radius: Math.max(2, Style.cornerRadius / 2)
-            borderSpec: Border.flat(Util.alpha(root.barForeground, 0.30), 1)
-
-            Rectangle {
-              width: Style.space(18)
-              height: Style.space(8)
-              radius: 2
-              color: Color.accent
-              x: root.placement.indexOf("left") !== -1 ? Style.space(4)
-                : root.placement.indexOf("right") !== -1 ? parent.width - width - Style.space(4)
-                : (parent.width - width) / 2
-              y: root.placement.indexOf("top") !== -1 ? Style.space(4)
-                : root.placement.indexOf("bottom") !== -1 ? parent.height - height - Style.space(4)
-                : (parent.height - height) / 2
+          Item {
+            width: parent.width
+            height: Style.space(56)
+            FlipBoard {
+              anchors.centerIn: parent
+              style: root.heroStyle
+              value: root.time(root.heroSeconds)
+              tileWidth: Style.space(44)
+              tileHeight: Style.space(56)
+              gap: Style.space(5)
+              foreground: Color.popups.text
+              accent: Color.notifications.countdown
+              dim: Util.alpha(Color.popups.text, 0.5)
+              line: Util.alpha(Color.popups.text, 0.16)
+              well: root.boardWell
+              fontFamily: Style.font.family
+              animated: root.opened
             }
           }
 
-          Text {
-            id: arrow
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            text: "󰅂"
-            color: Qt.darker(root.barForeground, 1.35)
-            font.family: Style.font.family
-            font.pixelSize: Style.font.icon
+          Item {
+            width: parent.width
+            height: heroFoot.implicitHeight
+            Caption {
+              id: heroFoot
+              anchors.left: parent.left
+              anchors.right: heroSpan.left
+              anchors.rightMargin: Style.space(12)
+              text: "Click to preview"
+            }
+            Caption {
+              id: heroSpan
+              anchors.right: parent.right
+              text: "Warn " + root.time(root.warningSeconds) + " → " + (root.timeline.nextEvent === "lock" ? "lock " : "saver ") + root.time(root.timeline.deadline) + " → " + (root.timeline.nextEvent === "lock" ? "saver " + root.time(root.screensaverSeconds) : "lock " + root.time(root.lockSeconds))
+            }
           }
         }
       }
 
-      Button {
+      // ------------------------------------------------------ flip style
+      Item {
         width: parent.width
-        text: "Preview countdown"
-        iconText: "󰐊"
-        bordered: true
-        foreground: root.barForeground
-        accent: Color.accent
-        onClicked: root.previewPopup()
+        height: styleHeader.implicitHeight
+        PanelSectionHeader { id: styleHeader; anchors.left: parent.left; text: "FLIP STYLE"; foreground: root.barForeground }
+        Caption {
+          anchors.right: parent.right
+          anchors.baseline: styleHeader.baseline
+          text: root.flipStyle === "random" ? "A different board each time" : Logic.flipStyleLabel(root.flipStyle) + " every time"
+        }
+      }
+
+      Row {
+        id: pickerRow
+        width: parent.width
+        spacing: Style.space(6)
+        readonly property var choices: Logic.FLIP_STYLES.concat(["random"])
+        readonly property real tileWidth: (width - spacing * (choices.length - 1)) / choices.length
+
+        Repeater {
+          model: pickerRow.choices
+
+          CursorSurface {
+            id: pick
+            required property string modelData
+            required property int index
+            readonly property bool selected: root.flipStyle === modelData
+            readonly property bool isRandom: modelData === "random"
+            width: pickerRow.tileWidth
+            implicitHeight: Style.space(74)
+            bordered: true
+            current: selected
+            foreground: root.barForeground
+            accent: Color.accent
+
+            HoverHandler {
+              onHoveredChanged: root.hoverStyle = hovered ? pick.modelData : (root.hoverStyle === pick.modelData ? "" : root.hoverStyle)
+            }
+            MouseArea {
+              anchors.fill: parent
+              hoverEnabled: true
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.chooseStyle(pick.modelData)
+            }
+
+            Caption {
+              visible: !pick.isRandom
+              anchors.left: parent.left
+              anchors.top: parent.top
+              anchors.margins: Style.space(5)
+              text: (pick.index + 1).toString().padStart(2, "0")
+              color: pick.selected ? Color.accent : root.dim
+              font.letterSpacing: 0.6
+              font.pixelSize: Style.font.caption - 1
+            }
+
+            Item {
+              width: Style.space(24)
+              height: Style.space(32)
+              anchors.horizontalCenter: parent.horizontalCenter
+              anchors.top: parent.top
+              anchors.topMargin: Style.space(12)
+              FlipBoard {
+                visible: !pick.isRandom
+                anchors.fill: parent
+                style: pick.isRandom ? "solari" : pick.modelData
+                value: String((pick.index + 1) % 10)
+                tileWidth: parent.width
+                tileHeight: parent.height
+                foreground: Color.popups.text
+                accent: Color.notifications.countdown
+                dim: Util.alpha(Color.popups.text, 0.5)
+                line: Util.alpha(Color.popups.text, 0.2)
+                well: root.boardWell
+                fontFamily: Style.font.family
+                animated: false
+              }
+              Text {
+                visible: pick.isRandom
+                anchors.centerIn: parent
+                text: "󰒟"
+                color: Color.accent
+                font.family: Style.font.family
+                font.pixelSize: Style.font.display
+              }
+            }
+
+            Caption {
+              anchors.left: parent.left
+              anchors.right: parent.right
+              anchors.bottom: parent.bottom
+              anchors.margins: Style.space(6)
+              horizontalAlignment: Text.AlignHCenter
+              text: pick.modelData
+              color: pick.selected ? Color.accent : root.dim
+              font.letterSpacing: 0.8
+              font.pixelSize: Style.font.caption - 1
+            }
+          }
+        }
+      }
+
+      Rule {}
+
+      // ------------------------------------------------------ timeline
+      Item {
+        width: parent.width
+        height: Math.max(timelineHeader.implicitHeight, snapGroup.implicitHeight)
+        PanelSectionHeader { id: timelineHeader; anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter; text: "IDLE TIMELINE"; foreground: root.barForeground }
+        Row {
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(8)
+          Caption { anchors.verticalCenter: parent.verticalCenter; text: "Snap" }
+          ButtonGroup {
+            id: snapGroup
+            anchors.verticalCenter: parent.verticalCenter
+            options: [
+              { value: "15", label: "15s" },
+              { value: "30", label: "30s" },
+              { value: "60", label: "1m" }
+            ]
+            value: String(root.snapSeconds)
+            foreground: root.barForeground
+            accent: Color.accent
+            fontSize: Style.font.caption
+            onChanged: function(value) { root.save("snapSeconds", Number(value)) }
+          }
+        }
+      }
+
+      Column {
+        width: parent.width
+        spacing: Style.space(8)
+
+        Repeater {
+          model: [
+            { key: "warningSeconds", label: "Warn", description: "Board appears after", value: root.warningSeconds, minimum: 15, maximum: 900, presets: [{value:"30",label:"30s"},{value:"60",label:"1m"},{value:"120",label:"2m"},{value:"300",label:"5m"}] },
+            { key: "screensaverSeconds", label: "Screensaver", description: "Countdown hits zero at", value: root.screensaverSeconds, minimum: 30, maximum: 1800, presets: [{value:"60",label:"1m"},{value:"180",label:"3m"},{value:"300",label:"5m"},{value:"600",label:"10m"}] },
+            { key: "lockSeconds", label: "Lock", description: "Password required at", value: root.lockSeconds, minimum: 45, maximum: 3600, presets: [{value:"300",label:"5m"},{value:"600",label:"10m"},{value:"1200",label:"20m"},{value:"1800",label:"30m"}] }
+          ]
+
+          delegate: Column {
+            id: timingRow
+            required property var modelData
+            required property int index
+            property real draftValue: modelData.value
+            width: parent.width
+            spacing: Style.space(4)
+
+            Rule { visible: timingRow.index > 0; opacity: 0.7 }
+
+            Item {
+              width: parent.width
+              height: Math.max(rowLabels.implicitHeight, rowPresets.implicitHeight, rowValue.implicitHeight)
+
+              Row {
+                id: rowLabels
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(8)
+                Caption { text: timingRow.modelData.label; color: root.ink; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+                Caption { text: timingRow.modelData.description; font.capitalization: Font.MixedCase; font.letterSpacing: 0.2; anchors.verticalCenter: parent.verticalCenter }
+              }
+
+              ButtonGroup {
+                id: rowPresets
+                anchors.right: rowValue.left
+                anchors.rightMargin: Style.space(12)
+                anchors.verticalCenter: parent.verticalCenter
+                options: timingRow.modelData.presets
+                value: String(timingRow.modelData.value)
+                foreground: root.barForeground
+                accent: Color.accent
+                fontSize: Style.font.caption
+                onChanged: function(value) { root.save(timingRow.modelData.key, Number(value)) }
+              }
+
+              Text {
+                id: rowValue
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: root.time(timingRow.draftValue)
+                color: Color.accent
+                font.family: Style.font.family
+                font.pixelSize: Style.font.subtitle
+                font.bold: true
+                width: implicitWidth
+              }
+            }
+
+            PanelSlider {
+              id: timingSlider
+              bar: root.bar
+              width: parent.width
+              minimum: timingRow.modelData.minimum
+              maximum: timingRow.modelData.maximum
+              step: root.snapSeconds
+              integer: true
+              value: timingRow.modelData.value
+              onMoved: function(value) {
+                var snapped = root.snappedTime(value)
+                timingSlider.liveValue = snapped
+                timingRow.draftValue = snapped
+              }
+              onReleased: function(value) {
+                var snapped = root.snappedTime(value)
+                timingRow.draftValue = snapped
+                root.save(timingRow.modelData.key, snapped)
+              }
+            }
+          }
+        }
+      }
+
+      Rule {}
+
+      // ------------------------------------------------------ footer row
+      Item {
+        width: parent.width
+        height: Math.max(footNote.implicitHeight, footButtons.implicitHeight)
+
+        Caption {
+          id: footNote
+          anchors.left: parent.left
+          anchors.right: footButtons.left
+          anchors.rightMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Never blocks clicks or keys"
+        }
+
+        Row {
+          id: footButtons
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(6)
+          Button {
+            text: root.placementLabel(root.placement) + "  󰅂"
+            iconText: "󰍹"
+            bordered: true
+            foreground: root.barForeground
+            accent: Color.accent
+            fontSize: Style.font.caption
+            onClicked: root.choosingPlacement = true
+          }
+          Button {
+            text: "PREVIEW"
+            iconText: "󰐊"
+            bordered: true
+            selected: true
+            foreground: root.barForeground
+            accent: Color.accent
+            fontSize: Style.font.caption
+            onClicked: root.previewPopup()
+          }
+        }
       }
     }
 
+    // -------------------------------------------------------- placement page
     Column {
       id: placementPage
       visible: root.choosingPlacement
       anchors.left: parent.left
       anchors.right: parent.right
       anchors.top: parent.top
-      spacing: Style.space(14)
+      spacing: Style.space(12)
 
       Item {
         width: parent.width
-        implicitHeight: Math.max(backButton.implicitHeight, pickerHeading.implicitHeight)
+        height: Math.max(backButton.implicitHeight, pickerHeading.implicitHeight)
 
         Button {
           id: backButton
           anchors.left: parent.left
           anchors.verticalCenter: parent.verticalCenter
           iconText: "󰁍"
-          text: "Back"
+          text: "BACK"
           bordered: true
           foreground: root.barForeground
           accent: Color.accent
+          fontSize: Style.font.caption
           onClicked: root.choosingPlacement = false
         }
 
@@ -452,21 +594,18 @@ Panel {
 
           Text {
             width: parent.width
-            text: "Choose a landing spot"
-            color: root.barForeground
+            text: "LANDING SPOT"
+            color: root.ink
             font.family: Style.font.family
             font.pixelSize: Style.font.title
             font.bold: true
+            font.letterSpacing: 1.8
           }
-          Text {
-            width: parent.width
-            text: "Click anywhere in the mini desktop."
-            color: Qt.darker(root.barForeground, 1.5)
-            font.family: Style.font.family
-            font.pixelSize: Style.font.caption
-          }
+          Caption { width: parent.width; text: "Click anywhere in the mini desktop"; font.capitalization: Font.MixedCase; font.letterSpacing: 0.2 }
         }
       }
+
+      Rule {}
 
       PlacementPicker {
         width: parent.width
@@ -476,24 +615,23 @@ Panel {
         onPicked: function(value) { root.choosePlacement(value) }
       }
 
-      Text {
+      Caption {
         width: parent.width
-        text: "The real popup previews on your desktop as you choose. It never blocks clicks or keyboard input."
-        color: Qt.darker(root.barForeground, 1.5)
-        font.family: Style.font.family
-        font.pixelSize: Style.font.caption
-        wrapMode: Text.WordWrap
+        text: "The real board previews on your desktop as you choose"
+        font.capitalization: Font.MixedCase
+        font.letterSpacing: 0.2
         horizontalAlignment: Text.AlignHCenter
       }
 
       Button {
         width: parent.width
-        text: "Done · " + root.placementLabel(root.placement)
+        text: "DONE · " + root.placementLabel(root.placement)
         iconText: "󰄬"
         bordered: true
         selected: true
         foreground: root.barForeground
         accent: Color.accent
+        fontSize: Style.font.caption
         onClicked: root.choosingPlacement = false
       }
     }

@@ -60,4 +60,30 @@ assert.equal(Logic.normalizedPlacement("banana"), "center")
 assert.equal(Logic.format(480), "08:00")
 assert.equal(Logic.format(7), "00:07")
 
+// Flip styles: five boards plus "random"; anything else falls back to random.
+assert.deepEqual(Logic.FLIP_STYLES, ["solari", "bits", "drum", "sweep", "step"])
+assert.equal(Logic.normalizedFlipStyle("drum"), "drum")
+assert.equal(Logic.normalizedFlipStyle("random"), "random")
+assert.equal(Logic.normalizedFlipStyle("banana"), "random")
+assert.equal(Logic.normalizedFlipStyle(undefined), "random")
+assert.equal(Logic.normalizedSettings({}, id).flipStyle, "random")
+assert.equal(Logic.normalizedSettings({ flipStyle: "bits" }, id).flipStyle, "bits")
+assert.equal(Logic.editedSettings({}, {}, "flipStyle", "sweep", id).flipStyle, "sweep")
+assert.equal(Logic.editedSettings({}, {}, "flipStyle", "nope", id).flipStyle, "random")
+
+// A fixed style always plays itself.
+assert.equal(Logic.flipStyleForShow("step", "solari", 0.99), "step")
+// Random never repeats the previous style when it has a choice, and honors the roll.
+assert.equal(Logic.flipStyleForShow("random", "", 0), "solari")
+assert.equal(Logic.flipStyleForShow("random", "", 0.999), "step")
+assert.equal(Logic.flipStyleForShow("random", "solari", 0), "bits")
+assert.equal(Logic.flipStyleForShow("random", "step", 0.999), "sweep")
+assert.notEqual(Logic.flipStyleForShow("random", "drum", 0.5), "drum")
+// Cycling is deterministic so a preview can tour the set in order.
+assert.equal(Logic.nextFlipStyle(""), "solari")
+assert.equal(Logic.nextFlipStyle("solari"), "bits")
+assert.equal(Logic.nextFlipStyle("step"), "solari")
+assert.equal(Logic.flipStyleLabel("solari"), "Solari")
+assert.equal(Logic.flipStyleLabel("random"), "Random")
+
 console.log("logic tests passed")
