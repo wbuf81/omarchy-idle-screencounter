@@ -107,9 +107,10 @@ Panel {
     if (counter && typeof counter.preview === "function") counter.preview(value, root.heroStyle)
   }
 
+  // Selecting a style only saves it. The miniature board above already shows
+  // the choice; the Preview button and the hero click run the desktop preview.
   function chooseStyle(value) {
     save("flipStyle", value)
-    if (counter && typeof counter.preview === "function") counter.preview(root.placement, value === "random" ? "" : value)
   }
 
   function previewPopup() {

@@ -101,7 +101,7 @@ rather than precision mouse acrobatics:
   tours the five boards; click it to preview on your desktop.
 - Pick a **flip style**: 01 Solari, 02 Vestaboard, 03 Drum, 04 Sweep,
   05 Stepped, or Random. Hover a tile to see it on the miniature, click to
-  preview it full size.
+  choose it. The miniature or the Preview button runs it full size.
 - Choose whether sliders snap every **15 seconds**, **30 seconds**, or **one minute**.
 - Jump to presets inline on every timeline row and watch the readout while
   dragging.
