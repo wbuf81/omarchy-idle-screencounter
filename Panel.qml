@@ -38,9 +38,35 @@ Panel {
   // the boards; hovering a picker tile shows that board instead.
   property string hoverStyle: ""
   property string tourStyle: "solari"
-  readonly property string heroStyle: hoverStyle !== "" && hoverStyle !== "random" ? hoverStyle
+  // What the hero should show. `heroStyle` follows it after a short crossfade
+  // so hovering across the picker reads as a dissolve, not a hard swap.
+  readonly property string targetStyle: hoverStyle !== "" && hoverStyle !== "random" ? hoverStyle
     : (flipStyle === "random" ? tourStyle : flipStyle)
+  property string heroStyle: "solari"
+  property real heroOpacity: 1
   property int heroSeconds: 0
+
+  onTargetStyleChanged: heroSwap.restart()
+
+  SequentialAnimation {
+    id: heroSwap
+    NumberAnimation { target: root; property: "heroOpacity"; to: 0; duration: 140; easing.type: Easing.InQuad }
+    ScriptAction { script: root.heroStyle = root.targetStyle }
+    NumberAnimation { target: root; property: "heroOpacity"; to: 1; duration: 220; easing.type: Easing.OutQuad }
+  }
+
+  // Hover intent: the miniature only follows a tile the pointer rests on.
+  property string pendingHover: ""
+  Timer {
+    id: hoverDwell
+    interval: 160
+    onTriggered: root.hoverStyle = root.pendingHover
+  }
+  function hoverTile(style, hovered) {
+    if (hovered) { pendingHover = style; hoverDwell.restart(); return }
+    if (pendingHover === style) { pendingHover = ""; hoverDwell.stop() }
+    if (hoverStyle === style) hoverStyle = ""
+  }
   // The host injects `settings` after construction; skip work until then.
   property bool ready: false
 
@@ -101,7 +127,7 @@ Panel {
   onScreensaverSecondsChanged: if (ready) resetHero()
   onLockSecondsChanged: if (ready) resetHero()
   onOpenedChanged: if (opened) { resetHero(); tourStyle = Logic.nextFlipStyle(tourStyle) }
-  Component.onCompleted: { ready = true; resetHero() }
+  Component.onCompleted: { heroStyle = targetStyle; ready = true; resetHero() }
 
   Timer {
     interval: 1000
@@ -265,6 +291,7 @@ Panel {
             height: Style.space(56)
             FlipBoard {
               anchors.centerIn: parent
+              opacity: root.heroOpacity
               style: root.heroStyle
               value: root.time(root.heroSeconds)
               tileWidth: Style.space(44)
@@ -335,7 +362,7 @@ Panel {
             accent: Color.accent
 
             HoverHandler {
-              onHoveredChanged: root.hoverStyle = hovered ? pick.modelData : (root.hoverStyle === pick.modelData ? "" : root.hoverStyle)
+              onHoveredChanged: root.hoverTile(pick.modelData, hovered)
             }
             MouseArea {
               anchors.fill: parent

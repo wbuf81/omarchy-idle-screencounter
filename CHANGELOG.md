@@ -10,8 +10,8 @@
 - Settings panel redesigned in the same language: status readout in the header,
   a live miniature board that previews on click, a flip-style picker, lean
   timeline rows with inline presets, and a footer row for placement and preview.
-- Hovering a style in the picker shows it on the miniature board; clicking it
-  previews it on the desktop.
+- Hovering a style in the picker shows it on the miniature board after a short
+  dwell, with a crossfade between boards; clicking it previews it on the desktop.
 - Work with Omarchy 4.0.3's scoped plugin API: read the bar entry from
   `shell.barConfig`, fall back to the entry-only settings write when the shell
   refuses whole-config mutation. Without this the countdown never armed and
