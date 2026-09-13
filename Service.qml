@@ -52,15 +52,25 @@ Item {
   property string lastStyle: ""
   property string previewStyle: ""
   readonly property string activeStyleLabel: Logic.flipStyleLabel(activeStyle)
+  // Arrivals board: running coding agents under the countdown.
+  readonly property bool agentsBoardEnabled: setting("agentsBoard", true) !== false
+  readonly property string agentsExtra: Logic.normalizedAgentsExtra(setting("agentsExtra", ""))
+  property var agentRows: []
+  property var previousCpu: ({})
+  readonly property bool hasAgents: agentsBoardEnabled && agentRows.length > 0
+  // Hovering the card keeps the popup up after the pointer ended idle.
+  property bool held: false
+  property int heldSeconds: 0
   // Countdown is a notification-like surface, so prefer the theme's semantic
   // countdown color over assuming its generic accent is always appropriate.
   readonly property color countdownAccent: Color.notifications.countdown
   readonly property bool warningVisible: enabled && idleMonitor.isIdle && remainingSeconds > 0
     && !screensaverActive && !sessionLocked
   readonly property bool popupVisible: !screensaverActive && !sessionLocked
-    && (warningVisible || previewVisible)
+    && (warningVisible || previewVisible || held)
   readonly property string effectivePlacement: previewVisible ? previewPlacement : placement
-  readonly property int displaySeconds: previewVisible ? previewSeconds : remainingSeconds
+  readonly property int displaySeconds: previewVisible ? previewSeconds
+    : (held && remainingSeconds === 0 ? heldSeconds : remainingSeconds)
   readonly property string targetScreenName: {
     var focusedName = Hyprland.focusedMonitor ? String(Hyprland.focusedMonitor.name || "") : ""
     if (focusedName !== "") return focusedName
@@ -162,10 +172,123 @@ Item {
   onActiveStyleChanged: boardGeneration += 1
 
   // Real countdowns pick their board here; previews pick theirs in preview().
-  onPopupVisibleChanged: if (popupVisible && !previewVisible) chooseStyle("")
+  onPopupVisibleChanged: {
+    if (popupVisible && !previewVisible) chooseStyle("")
+    if (!popupVisible) { agentRows = []; previousCpu = ({}); held = false }
+  }
   // A preview that ends while the real warning is up hands over to a fresh
   // board for the live countdown.
   onPreviewVisibleChanged: if (!previewVisible && popupVisible) { chooseStyle(""); boardGeneration += 1 }
+
+  onHeldChanged: {
+    if (held) { heldSeconds = displaySeconds; return }
+    if (!previewVisible && !idleMonitor.isIdle) endCountdown("released")
+  }
+
+  // ------------------------------------------------------------ agents
+  readonly property string scanScript: Qt.resolvedUrl("scripts/agents-scan.sh").toString().replace(/^file:\/\//, "")
+
+  Process {
+    id: agentScan
+    command: ["bash", root.scanScript]
+    environment: ({
+      AGENTS_EXTRA: root.agentsExtra,
+      AGENTS_TITLES: root.candidateTitles()
+    })
+    stdout: StdioCollector {
+      onStreamFinished: root.applyScan(text)
+    }
+  }
+
+  Timer {
+    id: agentScanTimer
+    interval: 5000
+    repeat: true
+    running: root.popupVisible && root.agentsBoardEnabled
+    triggeredOnStart: true
+    onTriggered: if (!agentScan.running) agentScan.running = true
+  }
+
+  // Terminal titles, one "any<TAB>title" per line. The scan attributes a title
+  // to a Claude Code session when its text appears in that transcript.
+  function candidateTitles() {
+    var lines = []
+    var tops = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    for (var i = 0; i < tops.length; i++) {
+      var title = String(tops[i].title || "")
+      if (title !== "") lines.push("any\t" + title)
+    }
+    return lines.join("\n")
+  }
+
+  function applyScan(text) {
+    var records
+    try { records = JSON.parse(String(text || "[]")) } catch (e) { console.warn("idle-screen-counter agents-scan parse failed"); records = [] }
+    if (!Array.isArray(records)) records = []
+    // A title claimed by more than one record identifies neither.
+    var titleCount = ({})
+    for (var t = 0; t < records.length; t++) {
+      var wt = String(records[t].windowTitle || "")
+      if (wt !== "") titleCount[wt] = (titleCount[wt] || 0) + 1
+    }
+    var tops = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    var now = Date.now()
+    var rows = []
+    var nextCpu = ({})
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i]
+      if (titleCount[String(r.windowTitle || "")] > 1) r.windowTitle = ""
+      var key = String(r.agent) + ":" + String(r.pid)
+      nextCpu[key] = Number(r.cpuTicks || 0)
+      rows.push(Logic.agentRow(r, root.toplevelFor(r, tops), now, previousCpu[key]))
+    }
+    previousCpu = nextCpu
+    agentRows = Logic.sortedAgentRows(rows)
+  }
+
+  // A toplevel belongs to a record when its client pid is the agent or one of
+  // its ancestors (claude → shell → terminal). Single-process terminals share
+  // one pid across windows; then only an attributed title disambiguates.
+  function toplevelFor(record, tops) {
+    var pids = [Number(record.pid)]
+    var ancestors = Array.isArray(record.ancestors) ? record.ancestors : []
+    for (var a = 0; a < ancestors.length; a++) pids.push(Number(ancestors[a]))
+    var candidates = []
+    for (var i = 0; i < tops.length; i++) {
+      var ipc = tops[i].lastIpcObject || {}
+      if (pids.indexOf(Number(ipc.pid || -1)) !== -1) candidates.push(tops[i])
+    }
+    if (candidates.length === 1) return { title: String(candidates[0].title || ""), address: String(candidates[0].address || "") }
+    var wanted = String(record.windowTitle || "")
+    for (var c = 0; c < candidates.length; c++) {
+      if (wanted !== "" && String(candidates[c].title || "") === wanted)
+        return { title: wanted, address: String(candidates[c].address || "") }
+    }
+    return { title: wanted, address: "" }
+  }
+
+  // Omarchy 4.0.3 ships Hyprland's Lua dispatch surface, so the dispatcher
+  // is a Lua expression rather than the classic "focuswindow address:..".
+  function focusAgent(address) {
+    var safe = String(address || "").replace(/[^0-9a-fx]/gi, "")
+    if (safe === "") return
+    Hyprland.dispatch('hl.dsp.focus({ window = "address:' + safe + '" })')
+    held = false
+    console.log("idle-screen-counter focus " + safe)
+  }
+
+  // Preview with nothing running shows two labelled sample rows so the board
+  // is discoverable. Never mistaken for live data: the label says so.
+  readonly property var sampleRows: {
+    if (!previewVisible || agentRows.length > 0) return []
+    var nowS = Math.floor(Date.now() / 1000)
+    var rows = Logic.sortedAgentRows([
+      Logic.agentRow({ pid: 0, agent: "sample", label: "Claude Code", strategy: "claude", cwd: "/home/you/Projects/your-app", started: nowS - 620, lastActivity: nowS - 12, branch: "main", tools: ["Read", "Edit"], sessionStatus: "busy", cpuTicks: 0, windowTitle: "" }, null, Date.now()),
+      Logic.agentRow({ pid: 1, agent: "sample", label: "Codex", strategy: "codex", cwd: "/home/you/Projects/ledger", started: nowS - 3000, lastActivity: nowS - 400, branch: "", tools: ["shell"], sessionStatus: "idle", cpuTicks: 0, windowTitle: "" }, null, Date.now())
+    ])
+    for (var i = 0; i < rows.length; i++) rows[i].agentLabel += " · sample"
+    return rows
+  }
 
   IdleMonitor {
     id: idleMonitor
@@ -177,8 +300,8 @@ Item {
 
   onEnabledChanged: if (!enabled) endCountdown("disabled")
   onIdleArmedChanged: if (!idleArmed) endCountdown("stay-awake")
-  onScreensaverActiveChanged: if (screensaverActive) endCountdown("screensaver-started")
-  onSessionLockedChanged: if (sessionLocked) endCountdown("session-locked")
+  onScreensaverActiveChanged: if (screensaverActive) { held = false; endCountdown("screensaver-started") }
+  onSessionLockedChanged: if (sessionLocked) { held = false; endCountdown("session-locked") }
 
   Timer {
     id: countdownTimer
@@ -233,6 +356,9 @@ Item {
         visible: root.popupVisible,
         flipStyle: root.flipStyle,
         activeStyle: root.activeStyle,
+        agentsBoard: root.agentsBoardEnabled,
+        agents: root.agentRows.length,
+        held: root.held,
         placement: root.effectivePlacement
       })
     }
@@ -256,8 +382,11 @@ Item {
       WlrLayershell.namespace: "idle-screen-counter"
       WlrLayershell.layer: WlrLayer.Overlay
       WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
-      // The card is purely informational; all pointer input reaches the app below.
-      mask: Region {}
+      // Click-through everywhere except the card, and only while the board
+      // has rows to hold open. Otherwise the surface stays fully passive.
+      mask: root.hasAgents || root.held ? cardRegion : emptyRegion
+      Region { id: emptyRegion }
+      Region { id: cardRegion; item: card }
       Item {
         id: card
         width: Math.min(Style.space(500), Math.max(1, parent.width - Style.space(32)))
@@ -270,7 +399,17 @@ Item {
         anchors.verticalCenterOffset: root.effectivePlacement.indexOf("top") !== -1 ? -safeVerticalOffset
           : root.effectivePlacement.indexOf("bottom") !== -1 ? safeVerticalOffset : 0
 
+        HoverHandler {
+          enabled: root.hasAgents || root.held
+          onHoveredChanged: {
+            if (hovered) { root.held = true; heldSafety.restart() }
+            else root.held = false
+          }
+        }
+        Timer { id: heldSafety; interval: 45000; onTriggered: root.held = false }
+
         // Flat station-board palette derived from the popup theme tokens.
+        readonly property color alert: Color.urgent
         readonly property color ink: Color.popups.text
         readonly property color dim: Util.alpha(ink, 0.55)
         readonly property color line: Util.alpha(ink, 0.16)
@@ -345,8 +484,8 @@ Item {
               anchors.verticalCenter: parent.verticalCenter
               spacing: Style.space(6)
               Caption {
-                text: root.previewVisible ? "Preview" : "Live"
-                color: root.countdownAccent
+                text: root.held ? "Held" : (root.previewVisible ? "Preview" : "Live")
+                color: root.held ? card.alert : root.countdownAccent
               }
               Caption { text: "·" }
               Caption { text: root.activeStyleLabel }
@@ -359,8 +498,8 @@ Item {
             width: parent.width
             topPadding: Style.space(4)
             horizontalAlignment: Text.AlignHCenter
-            text: root.previewVisible
-              ? "Your screensaver would start in"
+            text: root.held ? "Countdown paused while you look"
+              : root.previewVisible ? "Your screensaver would start in"
               : (root.nextEventIsLock ? "Your session locks in" : "Your screensaver starts in")
           }
 
@@ -399,6 +538,25 @@ Item {
             }
           }
 
+          ArrivalsBoard {
+            visible: rows.length > 0
+            width: parent.width
+            rows: root.hasAgents ? root.agentRows : root.sampleRows
+            style: root.activeStyle
+            held: root.held
+            foreground: card.ink
+            accent: root.countdownAccent
+            alert: card.alert
+            dim: card.dim
+            line: card.line
+            well: card.well
+            fontFamily: Style.font.family
+            captionSize: Style.font.caption
+            bodySize: Style.font.bodySmall
+            animated: popupWindow.visible
+            onFocusRequested: function(address) { root.focusAgent(address) }
+          }
+
           Rule {}
 
           Item {
@@ -410,7 +568,8 @@ Item {
               anchors.left: parent.left
               anchors.right: cursor.left
               anchors.rightMargin: Style.space(12)
-              text: root.previewVisible ? "Preview only · nothing will start" : "Move mouse or press any key to stay active"
+              text: root.held ? "Move off the board to dismiss · click a row to focus its terminal"
+                : root.previewVisible ? "Preview only · nothing will start" : "Move mouse or press any key to stay active"
             }
             Rectangle {
               id: cursor

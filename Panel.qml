@@ -23,6 +23,8 @@ Panel {
   readonly property int snapSeconds: intSetting("snapSeconds", 30)
   readonly property string placement: String(setting("placement", "center"))
   readonly property string flipStyle: Logic.normalizedFlipStyle(setting("flipStyle", "random"))
+  readonly property bool agentsBoard: setting("agentsBoard", true) !== false
+  readonly property string agentsExtra: String(setting("agentsExtra", ""))
   readonly property var counter: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
   readonly property var timeline: Logic.timeline(warningSeconds, screensaverSeconds, lockSeconds)
 
@@ -426,6 +428,64 @@ Panel {
               font.pixelSize: Style.font.caption - 1
             }
           }
+        }
+      }
+
+      // ------------------------------------------------------ arrivals board
+      Item {
+        width: parent.width
+        height: Math.max(arrivalsLabels.implicitHeight, arrivalsToggle.implicitHeight)
+        Column {
+          id: arrivalsLabels
+          anchors.left: parent.left
+          anchors.right: arrivalsToggle.left
+          anchors.rightMargin: Style.space(12)
+          anchors.verticalCenter: parent.verticalCenter
+          spacing: Style.space(2)
+          Caption { text: "Arrivals board"; color: root.ink; font.bold: true }
+          Caption {
+            width: parent.width
+            text: "Lists running coding agents under the countdown. Hover to hold it, click a row to focus that terminal."
+            font.capitalization: Font.MixedCase
+            font.letterSpacing: 0.2
+            wrapMode: Text.WordWrap
+            elide: Text.ElideNone
+          }
+        }
+        ToggleSwitch {
+          id: arrivalsToggle
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          checked: root.agentsBoard
+          foreground: root.barForeground
+          accent: Color.accent
+          onToggled: root.save("agentsBoard", !root.agentsBoard)
+        }
+      }
+
+      Item {
+        visible: root.agentsBoard
+        width: parent.width
+        height: extraField.implicitHeight
+        Caption {
+          id: extraLabel
+          anchors.left: parent.left
+          anchors.verticalCenter: parent.verticalCenter
+          text: "Also watch"
+        }
+        TextField {
+          id: extraField
+          anchors.left: extraLabel.right
+          anchors.leftMargin: Style.space(12)
+          anchors.right: parent.right
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.agentsExtra
+          placeholderText: "extra process names, comma separated · aider, goose"
+          foreground: root.barForeground
+          accent: Color.accent
+          font.family: Style.font.family
+          font.pixelSize: Style.font.caption
+          onEditingFinished: if (text !== root.agentsExtra) root.save("agentsExtra", text)
         }
       }
 
