@@ -15,6 +15,7 @@ Item {
   property string fontFamily: "monospace"
   property real speed: 1
   property bool animated: true
+  property string glyphSet: "digits"
 
   readonly property bool isColon: character === ":"
   readonly property real glyphSize: height * 0.72

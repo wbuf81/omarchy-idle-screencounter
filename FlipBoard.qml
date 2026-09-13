@@ -20,6 +20,8 @@ Item {
   property string fontFamily: "monospace"
   property real speed: 1
   property bool animated: true
+  // "digits" boards roll like a counter; "alnum" boards carry letters too.
+  property string glyphSet: "digits"
 
   readonly property var styleFiles: ({
     solari: "FlipSolari.qml",
@@ -49,7 +51,7 @@ Item {
 
         // The character rides along as an initial property so a freshly built
         // tile settles silently instead of flipping in from its default.
-        function load() { setSource(board.styleSource, { character: character }) }
+        function load() { setSource(board.styleSource, { character: character, glyphSet: board.glyphSet }) }
         Component.onCompleted: load()
         Connections { target: board; function onStyleSourceChanged() { slot.load() } }
 
@@ -63,6 +65,7 @@ Item {
           item.fontFamily = Qt.binding(function() { return board.fontFamily })
           item.speed = Qt.binding(function() { return board.speed })
           item.animated = Qt.binding(function() { return board.animated })
+          item.glyphSet = Qt.binding(function() { return board.glyphSet })
         }
       }
     }

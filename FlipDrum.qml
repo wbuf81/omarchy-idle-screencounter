@@ -15,9 +15,12 @@ Item {
   property string fontFamily: "monospace"
   property real speed: 1
   property bool animated: true
+  property string glyphSet: "digits"
 
+  readonly property string ring: glyphSet === "alnum" ? " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-·!?/×" : "0123456789"
+  readonly property int ringLength: ring.length
   readonly property bool isColon: character === ":"
-  readonly property bool isDigit: /^[0-9]$/.test(character)
+  readonly property bool isDigit: !isColon && ring.indexOf(character) !== -1
   readonly property real glyphSize: height * 0.72
   readonly property real cell: height * 0.68
   readonly property real inset: (height - cell) / 2
@@ -28,16 +31,21 @@ Item {
 
   function yFor(i) { return -i * cell + inset }
 
-  Component.onCompleted: if (isDigit) { index = 10 + parseInt(character, 10); strip.y = yFor(index) }
+  Component.onCompleted: if (isDigit) { index = ringLength + ring.indexOf(character); strip.y = yFor(index) }
   onCharacterChanged: {
     if (!isDigit) return
-    var d = parseInt(character, 10)
-    if (index === -1) { index = 10 + d; strip.y = yFor(index); return }
-    if (index % 10 === d) return
-    if (!animated || !visible) { roll.stop(); index = 10 + d; strip.y = yFor(index); return }
-    // Counting down rolls the drum toward lower values; find the nearest one.
-    var target = index - ((index % 10 - d + 10) % 10)
-    if (target < 0) target += 10
+    var d = ring.indexOf(character)
+    if (index === -1) { index = ringLength + d; strip.y = yFor(index); return }
+    var cur = index % ringLength
+    if (cur === d) return
+    if (!animated || !visible) { roll.stop(); index = ringLength + d; strip.y = yFor(index); return }
+    // Digits count down, so the drum rolls toward lower values. Letters take
+    // whichever direction is shorter.
+    var down = ((cur - d) % ringLength + ringLength) % ringLength
+    var up = ((d - cur) % ringLength + ringLength) % ringLength
+    var target = glyphSet === "alnum" && up < down ? index + up : index - down
+    if (target < 0) target += ringLength
+    if (target >= copies * ringLength) target -= ringLength
     index = target
     roll.stop()
     roll.to = yFor(target)
@@ -59,12 +67,12 @@ Item {
     width: tile.width
     Column {
       Repeater {
-        model: tile.copies * 10
+        model: tile.copies * tile.ringLength
         Text {
           required property int index
           width: tile.width
           height: tile.cell
-          text: String(index % 10)
+          text: tile.ring.charAt(index % tile.ringLength)
           color: index === tile.index ? tile.foreground : tile.dim
           font.family: tile.fontFamily
           font.pixelSize: tile.glyphSize
@@ -87,7 +95,7 @@ Item {
       easing.overshoot: 0.7
     }
     // Recenter silently into the middle copy so the next roll has room.
-    ScriptAction { script: { tile.index = 10 + tile.index % 10; strip.y = tile.yFor(tile.index) } }
+    ScriptAction { script: { tile.index = tile.ringLength + tile.index % tile.ringLength; strip.y = tile.yFor(tile.index) } }
   }
 
   // Non-digit characters (the colon, a placeholder) sit still.

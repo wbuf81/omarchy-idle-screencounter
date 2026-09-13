@@ -16,6 +16,8 @@ Item {
   property string fontFamily: "monospace"
   property real speed: 1
   property bool animated: true
+  property string glyphSet: "digits"
+  readonly property string ring: glyphSet === "alnum" ? " ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-·!?/×" : "0123456789"
 
   readonly property bool isColon: character === ":"
   readonly property real glyphSize: height * 0.72
@@ -35,19 +37,37 @@ Item {
 
   function animateTo(next) {
     if (current === "" || !animated || !visible) { current = next; queue = []; return }
-    var a = parseInt(current, 10), b = parseInt(next, 10)
     var pending = queue.slice()
-    if (isNaN(a) || isNaN(b)) {
-      pending.push(next)
-    } else {
-      // Travel downward around the drum, one flap per digit.
-      var steps = ((a - b) % 10 + 10) % 10
-      var last = pending.length ? parseInt(pending[pending.length - 1], 10) : a
-      steps = ((last - b) % 10 + 10) % 10
-      for (var i = 1; i <= steps; i++) pending.push(String((last - i + 10) % 10))
-    }
+    var last = pending.length ? pending[pending.length - 1] : current
+    var steps = stepsBetween(last, next)
+    for (var i = 0; i < steps.length; i++) pending.push(steps[i])
     queue = pending
     if (!flipping) startNext()
+  }
+
+  // Digits travel downward like a real drum. Letters take the short way
+  // around the ring, capped so a word change never chatters for long.
+  function stepsBetween(from, to) {
+    var a = ring.indexOf(from), b = ring.indexOf(to)
+    if (a === -1 || b === -1) return [to]
+    var n = ring.length
+    var forward = ((b - a) % n + n) % n
+    var backward = ((a - b) % n + n) % n
+    var out = []
+    if (glyphSet !== "alnum") {
+      for (var i = 1; i <= backward; i++) out.push(ring.charAt((a - i + n) % n))
+      return out
+    }
+    var cap = 3
+    if (forward <= backward) {
+      var count = Math.min(forward, cap)
+      for (var f = 1; f < count; f++) out.push(ring.charAt((a + f) % n))
+    } else {
+      var count2 = Math.min(backward, cap)
+      for (var g = 1; g < count2; g++) out.push(ring.charAt((a - g + n) % n))
+    }
+    out.push(to)
+    return out
   }
 
   function startNext() {
