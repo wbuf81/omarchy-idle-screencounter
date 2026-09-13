@@ -17,6 +17,7 @@ jq -e '
 
 for entrypoint in Service.qml BarWidget.qml Panel.qml PlacementPicker.qml Logic.js README.md LICENSE \
   FlipBoard.qml FlipSolari.qml FlipBits.qml FlipDrum.qml FlipSweep.qml FlipStep.qml \
+  ArrivalsBoard.qml scripts/agents-scan.sh tests/agents-scan.test.sh \
   assets/demo/idle-screen-counter-demo-clean.gif \
   assets/demo/idle-screen-counter-demo-clean.mp4 \
   assets/screenshots/countdown-popup.webp \
@@ -48,8 +49,9 @@ if find assets/demo -maxdepth 1 -type f -name 'screenrecording-*' | grep -q .; t
   exit 1
 fi
 
-bash -n scripts/dev-sync.sh scripts/release-check.sh scripts/static-check.sh
+bash -n scripts/dev-sync.sh scripts/release-check.sh scripts/static-check.sh scripts/agents-scan.sh tests/agents-scan.test.sh
 node tests/logic.test.js
+bash tests/agents-scan.test.sh
 
 if grep -RInE '(^|[^[:alpha:]])(TODO|FIXME|HACK)([^[:alpha:]]|$)' \
   --include='*.qml' --include='*.js' --include='*.sh' --exclude='static-check.sh' .; then

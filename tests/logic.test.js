@@ -86,4 +86,52 @@ assert.equal(Logic.nextFlipStyle("step"), "solari")
 assert.equal(Logic.flipStyleLabel("solari"), "Solari")
 assert.equal(Logic.flipStyleLabel("random"), "Random")
 
+// Arrivals board settings.
+assert.equal(Logic.normalizedSettings({}, id).agentsBoard, true)
+assert.equal(Logic.normalizedSettings({ agentsBoard: false }, id).agentsBoard, false)
+assert.equal(Logic.normalizedSettings({}, id).agentsExtra, "")
+assert.equal(Logic.normalizedAgentsExtra(" Aider, opencode ,,GOOSE "), "aider,opencode,goose")
+assert.equal(Logic.normalizedAgentsExtra("bad name;rm -rf"), "")
+assert.equal(Logic.editedSettings({}, {}, "agentsBoard", false, id).agentsBoard, false)
+assert.equal(Logic.editedSettings({}, {}, "agentsExtra", "Aider, goose", id).agentsExtra, "aider,goose")
+
+// Agent status.
+var now = Date.parse("2026-09-13T18:40:00Z")
+var busy = { pid: 1, agent: "claude", label: "Claude Code", strategy: "claude", cwd: "/home/wes/Projects/omarchy-idle-screencounter", started: 1789157806, lastActivity: Math.floor(now / 1000) - 20, branch: "main", tools: ["Bash", "Write"], sessionStatus: "busy", cpuTicks: 100, windowTitle: "◐ Vestaboard flipper animations" }
+assert.equal(Logic.agentStatus(busy, now), "working")
+var waiting = Object.assign({}, busy, { sessionStatus: "idle", lastActivity: Math.floor(now / 1000) - 300, windowTitle: "✳ Health stuff weekly updates" })
+assert.equal(Logic.agentStatus(waiting, now), "needs-you")
+var stale = Object.assign({}, waiting, { lastActivity: Math.floor(now / 1000) - 3 * 3600, windowTitle: "" })
+assert.equal(Logic.agentStatus(stale, now), "idle")
+var asked = Object.assign({}, busy, { sessionStatus: "idle", tools: ["Bash", "AskUserQuestion"], windowTitle: "✳ Vestaboard flipper animations" })
+assert.equal(Logic.agentStatus(asked, now), "needs-you")
+var generic = { pid: 2, agent: "aider", label: "Aider", strategy: "generic", cwd: "/home/wes/x", started: 1, lastActivity: 0, branch: "", tools: [], sessionStatus: "", cpuTicks: 500, windowTitle: "aider" }
+assert.equal(Logic.agentStatus(generic, now, 480), "working")
+assert.equal(Logic.agentStatus(generic, now, 500), "idle")
+assert.equal(Logic.agentStatus(Object.assign({}, generic, { windowTitle: "? aider needs input" }), now, 500), "needs-you")
+
+// NOW column and elapsed.
+assert.equal(Logic.agentNow(busy, "working", now), "WRITE")
+assert.equal(Logic.agentNow(waiting, "needs-you", now), "WAITING")
+assert.equal(Logic.agentNow(stale, "idle", now), "IDLE 3H")
+assert.equal(Logic.agentNow(generic, "working", now), "RUNNING")
+assert.equal(Logic.agentNow(Object.assign({}, busy, { tools: ["mcp__plugin_playwright__browser_navigate"] }), "working", now), "MCP PLUGIN")
+assert.equal(Logic.elapsedLabel(now - 65 * 1000, now), "01:05")
+assert.equal(Logic.elapsedLabel(now - 2 * 3600 * 1000 - 5 * 60000, now), "2:05")
+assert.equal(Logic.elapsedLabel(now - 3 * 86400 * 1000, now), "3d")
+
+// Rows and ordering.
+var row = Logic.agentRow(busy, { title: "◐ Vestaboard flipper animations", address: "0x1" }, now)
+assert.equal(row.agentLabel, "Claude Code")
+assert.equal(row.project, "omarchy-idle-screencounter")
+assert.equal(row.status, "working")
+assert.equal(row.address, "0x1")
+assert.equal(row.title, "Vestaboard flipper animations")
+var rows = Logic.sortedAgentRows([
+  Logic.agentRow(stale, null, now),
+  Logic.agentRow(busy, null, now),
+  Logic.agentRow(waiting, null, now)
+])
+assert.deepEqual(rows.map(function(r) { return r.status }), ["needs-you", "working", "idle"])
+
 console.log("logic tests passed")

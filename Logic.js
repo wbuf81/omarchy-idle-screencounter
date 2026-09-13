@@ -52,6 +52,120 @@ function flipStyleForShow(configured, previous, roll) {
   return pool[Math.floor(unit * pool.length)]
 }
 
+// Extra process names the user wants treated as agents. Only plain
+// executable names survive: letters, digits, dot, dash, underscore.
+function normalizedAgentsExtra(value) {
+  var parts = String(value || "").toLowerCase().split(",")
+  var out = []
+  for (var i = 0; i < parts.length; i++) {
+    var name = parts[i].replace(/^\s+|\s+$/g, "")
+    if (name !== "" && /^[a-z0-9._-]+$/.test(name) && out.indexOf(name) === -1) out.push(name)
+  }
+  return out.join(",")
+}
+
+var AGENT_WAIT_MARKERS = ["✳", "?"]
+var AGENT_BUSY_GLYPHS = ["◐", "◓", "◑", "◒", "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
+var WORKING_WINDOW_MS = 2 * 60 * 1000
+var WAITING_WINDOW_MS = 30 * 60 * 1000
+
+function titleMarker(title) {
+  var text = String(title || "").replace(/^\s+/, "")
+  return text === "" ? "" : text.charAt(0)
+}
+
+function stripTitleGlyph(title) {
+  return String(title || "").replace(/^[^A-Za-z0-9]+\s*/, "")
+}
+
+// One of "working", "needs-you", "idle". Transcript-backed agents lean on the
+// session status file; generic agents lean on CPU movement and the title.
+function agentStatus(record, nowMs, previousCpuTicks) {
+  var r = record || {}
+  var marker = titleMarker(r.windowTitle)
+  var lastMs = numberOr(r.lastActivity, 0) * 1000
+  var recent = lastMs > 0 && nowMs - lastMs <= WORKING_WINDOW_MS
+  var tools = Array.isArray(r.tools) ? r.tools : []
+  var lastTool = tools.length ? String(tools[tools.length - 1]) : ""
+  if (r.sessionStatus === "busy") return "working"
+  if (AGENT_BUSY_GLYPHS.indexOf(marker) !== -1) return "working"
+  if (lastTool === "AskUserQuestion") return "needs-you"
+  if (AGENT_WAIT_MARKERS.indexOf(marker) !== -1 && (lastMs === 0 || nowMs - lastMs <= WAITING_WINDOW_MS)) return "needs-you"
+  if (r.sessionStatus === "idle" && lastMs > 0 && nowMs - lastMs <= WAITING_WINDOW_MS) return "needs-you"
+  if (r.strategy === "generic" || !r.strategy) {
+    var prev = numberOr(previousCpuTicks, -1)
+    if (prev >= 0 && numberOr(r.cpuTicks, 0) > prev) return "working"
+    return "idle"
+  }
+  return recent ? "working" : "idle"
+}
+
+function compactAge(fromMs, nowMs) {
+  var s = Math.max(0, Math.floor((nowMs - fromMs) / 1000))
+  if (s < 60) return s + "S"
+  if (s < 3600) return Math.floor(s / 60) + "M"
+  if (s < 86400) return Math.floor(s / 3600) + "H"
+  return Math.floor(s / 86400) + "D"
+}
+
+// The NOW column: at most 11 uppercase characters.
+function agentNow(record, status, nowMs) {
+  var r = record || {}
+  if (status === "needs-you") return "WAITING"
+  if (status === "idle") {
+    var lastMs = numberOr(r.lastActivity, 0) * 1000
+    return lastMs > 0 ? ("IDLE " + compactAge(lastMs, nowMs)).slice(0, 11) : "IDLE"
+  }
+  var tools = Array.isArray(r.tools) ? r.tools : []
+  if (tools.length) {
+    var name = String(tools[tools.length - 1]).replace(/^mcp__/, "MCP ").replace(/__.*$/, "").replace(/[_-]+/g, " ")
+    return name.toUpperCase().slice(0, 11).replace(/\s+$/, "")
+  }
+  return "RUNNING"
+}
+
+function elapsedLabel(fromMs, nowMs) {
+  var s = Math.max(0, Math.floor((nowMs - fromMs) / 1000))
+  if (s >= 86400) return Math.floor(s / 86400) + "d"
+  var minutes = Math.floor((s % 3600) / 60)
+  if (s >= 3600) return Math.floor(s / 3600) + ":" + (minutes < 10 ? "0" : "") + minutes
+  return (Math.floor(s / 60) < 10 ? "0" : "") + Math.floor(s / 60) + ":" + (s % 60 < 10 ? "0" : "") + (s % 60)
+}
+
+function agentRow(record, top, nowMs, previousCpuTicks) {
+  var r = record || {}
+  var t = top || {}
+  var status = agentStatus(r, nowMs, previousCpuTicks)
+  var lastMs = numberOr(r.lastActivity, 0) * 1000
+  var startMs = numberOr(r.started, 0) * 1000
+  var cwd = String(r.cwd || "")
+  var project = cwd.replace(/\/+$/, "").split("/").pop() || cwd || "?"
+  return {
+    id: String(r.agent || "") + ":" + String(r.pid || ""),
+    pid: numberOr(r.pid, 0),
+    agent: String(r.agent || ""),
+    agentLabel: String(r.label || r.agent || "Agent"),
+    project: project,
+    branch: String(r.branch || ""),
+    now: agentNow(r, status, nowMs),
+    tools: Array.isArray(r.tools) ? r.tools.slice(-4) : [],
+    status: status,
+    lastActivity: lastMs,
+    elapsed: elapsedLabel(lastMs > 0 ? lastMs : startMs, nowMs),
+    title: stripTitleGlyph(t.title || r.windowTitle || ""),
+    address: String(t.address || "")
+  }
+}
+
+function sortedAgentRows(rows) {
+  var order = { "needs-you": 0, working: 1, idle: 2 }
+  return (rows || []).slice().sort(function(a, b) {
+    var byStatus = order[a.status] - order[b.status]
+    if (byStatus !== 0) return byStatus
+    return numberOr(b.lastActivity, 0) - numberOr(a.lastActivity, 0)
+  })
+}
+
 function normalizedPlacement(value) {
   var candidate = String(value || "center")
   var allowed = ["top-left", "top", "top-right", "center", "bottom-left", "bottom", "bottom-right"]
@@ -67,7 +181,9 @@ function normalizedSettings(input, pluginId) {
     lockSeconds: 1200,
     snapSeconds: 30,
     placement: "center",
-    flipStyle: "random"
+    flipStyle: "random",
+    agentsBoard: true,
+    agentsExtra: ""
   }, input || {})
 
   normalized.id = String(pluginId || normalized.id)
@@ -80,6 +196,8 @@ function normalizedSettings(input, pluginId) {
   normalized.snapSeconds = [15, 30, 60].indexOf(Number(normalized.snapSeconds)) !== -1 ? Number(normalized.snapSeconds) : 30
   normalized.placement = normalizedPlacement(normalized.placement)
   normalized.flipStyle = normalizedFlipStyle(normalized.flipStyle)
+  normalized.agentsBoard = normalized.agentsBoard !== false
+  normalized.agentsExtra = normalizedAgentsExtra(normalized.agentsExtra)
   return normalized
 }
 
@@ -89,8 +207,9 @@ function editedSettings(input, current, key, value, pluginId) {
   next.warningSeconds = numberOr(live.warningSeconds, numberOr(next.warningSeconds, 120))
   next.screensaverSeconds = numberOr(live.screensaverSeconds, numberOr(next.screensaverSeconds, 600))
   next.lockSeconds = numberOr(live.lockSeconds, numberOr(next.lockSeconds, 1200))
-  var stringKeys = ["placement", "flipStyle"]
-  next[key] = key === "enabled" ? !!value : (stringKeys.indexOf(key) !== -1 ? String(value) : Math.round(Number(value)))
+  var stringKeys = ["placement", "flipStyle", "agentsExtra"]
+  var boolKeys = ["enabled", "agentsBoard"]
+  next[key] = boolKeys.indexOf(key) !== -1 ? !!value : (stringKeys.indexOf(key) !== -1 ? String(value) : Math.round(Number(value)))
 
   if (key === "warningSeconds") {
     next.screensaverSeconds = Math.max(next.screensaverSeconds, next.warningSeconds + 15)
@@ -140,6 +259,14 @@ if (typeof module !== "undefined") {
     flipStyleLabel: flipStyleLabel,
     nextFlipStyle: nextFlipStyle,
     flipStyleForShow: flipStyleForShow,
+    normalizedAgentsExtra: normalizedAgentsExtra,
+    AGENT_WAIT_MARKERS: AGENT_WAIT_MARKERS,
+    agentStatus: agentStatus,
+    agentNow: agentNow,
+    elapsedLabel: elapsedLabel,
+    agentRow: agentRow,
+    sortedAgentRows: sortedAgentRows,
+    stripTitleGlyph: stripTitleGlyph,
     seconds: seconds,
     normalizedPlacement: normalizedPlacement,
     normalizedSettings: normalizedSettings,
