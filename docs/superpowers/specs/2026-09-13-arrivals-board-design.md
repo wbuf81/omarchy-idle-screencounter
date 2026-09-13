@@ -71,6 +71,48 @@ unreadable transcript yields empty fields, not an exit code.
 The script lives in the plugin directory so `omarchy plugin add` ships it. It is
 invoked with an absolute path resolved from `Qt.resolvedUrl`.
 
+### Other agents: adapters and a generic fallback
+
+The plugin will be shared, so the scan must not assume Claude Code and Codex.
+Two layers:
+
+**Adapter table.** The script declares one line per known agent:
+`process name · label · session strategy`. Shipping entries:
+
+| Process | Label | Strategy |
+| --- | --- | --- |
+| `claude` | Claude Code | `claude`: transcript under `~/.claude/projects/<cwd>` |
+| `codex` | Codex | `codex`: rollout under `~/.codex/sessions/` matching `cwd` |
+| `opencode` | OpenCode | `generic` |
+| `aider` | Aider | `generic` |
+| `gemini` | Gemini CLI | `generic` |
+| `goose` | Goose | `generic` |
+| `amp` | Amp | `generic` |
+| `cursor-agent` | Cursor | `generic` |
+| `copilot` | Copilot CLI | `generic` |
+
+Adding an agent with a transcript format is one strategy function in the
+script and one table line. The README carries a short "Adding an agent"
+section that says exactly that, plus what the JSON record must contain.
+
+**Generic strategy.** For any agent without a transcript adapter, the record
+still carries `pid`, `agent`, `cwd`, `started`, and two fields every process
+has: `cpuTicks` (utime + stime from `/proc/<pid>/stat`) and `windowTitle`
+(merged later from the toplevel). `Logic.agentStatus` uses them when
+transcript fields are absent: `working` if `cpuTicks` grew since the previous
+scan, `idle` otherwise, and `needs-you` when the window title carries a
+known waiting marker (Claude Code's `✳`, or a `?` prefix). The NOW column shows
+the title's first word for generic agents, or `RUNNING`/`IDLE`.
+
+**User-added processes.** A setting `agentsExtra` (comma-separated process
+names, default empty) is passed to the script as `AGENTS_EXTRA`. Each name is
+treated as a generic agent labelled after itself. The settings panel exposes
+it as a text field under the ARRIVALS BOARD toggle.
+
+The script gets one more field, `strategy`, so the row can say how it was
+observed, and the Node tests cover status derivation for both transcript and
+generic records.
+
 ## 2. Logic.js
 
 New pure helpers, all covered in `tests/logic.test.js`:
@@ -91,8 +133,12 @@ New pure helpers, all covered in `tests/logic.test.js`:
     else `Nd`.
 - `sortedAgentRows(rows)` orders needs-you first, then working, then idle, and
   within a group by most recent activity.
+- `agentStatus` handles generic records: `cpuTicks` growth against
+  `previousCpuTicks` means working; a waiting marker in the title means
+  needs-you.
 - `normalizedSettings` gains `agentsBoard` (boolean, default `true`) and
-  `editedSettings` accepts it.
+  `agentsExtra` (string, default `""`, trimmed, lowercase, comma-separated
+  process names); `editedSettings` accepts both.
 
 ## 3. ArrivalsBoard.qml
 
@@ -172,7 +218,8 @@ render the board; the panel stays compact.
 
 ## 7. Manifest, docs, checks
 
-- `manifest.json`: version `2.1.0`, `agentsBoard` default and schema entry.
+- `manifest.json`: version `2.1.0`, `agentsBoard` and `agentsExtra` defaults
+  and schema entries.
 - `scripts/static-check.sh`: version bump, `ArrivalsBoard.qml` and
   `scripts/agents-scan.sh` in the file list, `bash -n` on the scan script, and
   a `grep` that `Service.qml` references `agents-scan.sh`.
@@ -205,5 +252,6 @@ render the board; the panel stays compact.
 ## Out of scope
 
 Keyboard navigation on the overlay, model names per session (not reliably
-available without reading message content), other agents (aider, opencode),
-and showing the board in the settings panel miniature.
+available without reading message content), transcript adapters for agents
+other than Claude Code and Codex (they get the generic strategy), and showing
+the board in the settings panel miniature.
