@@ -117,11 +117,53 @@ Everything can also be set from `shell.json` on the plugin's bar entry:
 | Key | Values | Default |
 | --- | --- | --- |
 | `flipStyle` | `solari`, `bits`, `drum`, `sweep`, `step`, `random` | `random` |
+| `agentsBoard` | `true`, `false` | `true` |
+| `agentsExtra` | comma-separated process names | `""` |
 | `placement` | `top-left`, `top`, `top-right`, `center`, `bottom-left`, `bottom`, `bottom-right` | `center` |
 | `snapSeconds` | `15`, `30`, `60` | `30` |
 
 The panel always preserves `warning < screensaver < lock`. Moving one deadline
 through another automatically nudges the neighboring deadline to a valid value.
+
+## Arrivals board
+
+Under the countdown, one departure-board row per coding agent running on the
+machine: the agent, the project folder and branch, what it is doing right now
+as flip letters in the same board style as the countdown, how long since it
+last did anything, and a status chip. **WORKING** pulses in the accent.
+**NEEDS YOU** turns pink and blinks, and sorts to the top, because that is the
+agent you came back for. **IDLE** is dim.
+
+The popup is passive by design, so moving the mouse would normally dismiss it.
+Move the pointer onto the card instead and it **holds**: the countdown pauses,
+the header reads HELD, and the card stays until you move off. While held, hover
+a row for its last tool calls and click it to focus that terminal.
+
+The board hides itself when no agent is running, so a machine without agents
+sees the plain countdown. Turn it off in the panel or with `agentsBoard: false`.
+
+### What it reads
+
+| Agent | How it is observed |
+| --- | --- |
+| Claude Code | `~/.claude/sessions/<pid>.json` for status, then the session transcript for the last tool names and branch |
+| Codex | the rollout under `~/.codex/sessions/` for that working directory, for tool names |
+| OpenCode, Aider, Gemini CLI, Goose, Amp, Cursor, Copilot CLI | generic: CPU activity between scans and the window title |
+| anything else | add the process name under **Also watch** in the panel, or `agentsExtra` |
+
+Only tool names, folder names, branch names, timestamps, and the agent's own
+window title ever leave `scripts/agents-scan.sh`. It never reads message text.
+The scan runs only while the popup is visible, every five seconds, and reads at
+most the last 400 KB of a transcript.
+
+### Adding an agent
+
+Agents live in one table at the top of `scripts/agents-scan.sh`:
+`process name | label | strategy`. A new agent with its own session format is
+one table line plus one `summarize_<strategy>` function that prints a record
+with `pid`, `agent`, `label`, `strategy`, `cwd`, `started`, `lastActivity`,
+`branch`, `tools`, `sessionStatus`, `cpuTicks`, `windowTitle`, and `ancestors`.
+`tests/agents-scan.test.sh` shows the fixture pattern.
 
 ## Screenshots
 
@@ -205,7 +247,9 @@ Before a release, manually sanity-check:
 
 | File | Responsibility |
 | --- | --- |
-| `Service.qml` | Idle monitoring, preview, focused-monitor popup, per-show board selection |
+| `Service.qml` | Idle monitoring, preview, focused-monitor popup, per-show board selection, agent scan, hold and focus |
+| `ArrivalsBoard.qml` | The agents table under the countdown; pure QtQuick over FlipBoard |
+| `scripts/agents-scan.sh` | Enumerates running agents and summarizes sessions as JSON, with adapters and a generic fallback |
 | `FlipBoard.qml` | Lays out a value as flip tiles in one of the five styles; pure QtQuick |
 | `FlipSolari.qml`, `FlipBits.qml`, `FlipDrum.qml`, `FlipSweep.qml`, `FlipStep.qml` | One board style each, all sharing the same tile interface |
 | `BarWidget.qml` | Bar icon, panel loading, settings persistence, and Omarchy idle synchronization |

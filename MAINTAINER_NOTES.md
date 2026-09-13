@@ -6,7 +6,7 @@ changes still belong in `CHANGELOG.md`.
 
 ## Current state
 
-- Current manifest version: **2.0.0** (five flip boards, station-style popup and panel).
+- Current manifest version: **2.1.0** (Arrivals board of running coding agents).
 - Development branch: `main`.
 - The repository was clean and matched `origin/main` when these notes were
   written on September 1, 2026.
@@ -44,6 +44,33 @@ omastorm.com on September 11, 2026. Constraints worth keeping:
   `QQmlComponent::createObject` → `QQmlObjectCreator::finalize`). The crash
   handler relaunched the shell and nothing was lost, but let the reload settle
   first.
+
+## v2.1.0 Arrivals board
+
+Spec: `docs/superpowers/specs/2026-09-13-arrivals-board-design.md`. Plan:
+`docs/superpowers/plans/2026-09-13-arrivals-board.md`.
+
+- `scripts/agents-scan.sh` is the only place that knows about agents. It runs
+  through `Quickshell.Io.Process` every 5 s while the popup is visible and
+  never while hidden. Adapters: Claude Code reads `~/.claude/sessions/<pid>.json`
+  (`status: busy|idle`, `sessionId`) and the exact transcript; Codex reads the
+  rollout whose `session_meta.cwd` matches. Everything else is `generic`.
+- Rows map to Hyprland toplevels by pid ancestry (`claude → shell → terminal`).
+  Ghostty is one process for all windows, so the pid alone is ambiguous there.
+  The service passes every toplevel title to the scan, which attributes a
+  glyph-prefixed title to a Claude session when its text appears in that
+  transcript; a title claimed by two records is dropped. A row without an
+  address still shows, just without click-to-focus.
+- Claude Code title glyphs: spinner glyphs (`◐◓◑◒`) mean busy, `✳` means
+  waiting for input. `Logic.agentStatus` reads them as a fallback.
+- Hold: the `PanelWindow` mask is `Region { item: card }` only while the board
+  has rows (or is held); otherwise the empty region keeps the surface fully
+  click-through. `held` keeps `popupVisible` true after `IdleMonitor.isIdle`
+  drops. A 45 s safety timer releases a parked pointer.
+- Omarchy 4.0.3's Hyprland dispatches Lua expressions. Focus is
+  `hl.dsp.focus({ window = "address:0x…" })`; the classic
+  `focuswindow address:` form is rejected. `hl.dsp.cursor.move({ x, y })`
+  moves the pointer, handy for testing hold from a script.
 
 ## Omarchy 4.0.3 plugin API
 

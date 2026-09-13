@@ -2,10 +2,10 @@
   "schemaVersion": 1,
   "id": "io.github.wbuf81.idle-screencounter",
   "name": "Idle Screen Counter",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "author": "Wes (wbuf81)",
   "license": "MIT",
-  "description": "Five theme-aware flip-board countdowns before Omarchy starts the screensaver.",
+  "description": "Five theme-aware flip-board countdowns before Omarchy starts the screensaver, with an arrivals board of your running coding agents.",
   "kinds": [
     "service",
     "bar-widget"
@@ -28,7 +28,9 @@
       "lockSeconds": 1200,
       "snapSeconds": 30,
       "placement": "center",
-      "flipStyle": "random"
+      "flipStyle": "random",
+      "agentsBoard": true,
+      "agentsExtra": ""
     },
     "schema": [
       {
@@ -80,6 +82,18 @@
         "type": "string",
         "label": "Flip style (solari, bits, drum, sweep, step, random)",
         "defaultValue": "random"
+      },
+      {
+        "key": "agentsBoard",
+        "type": "boolean",
+        "label": "Arrivals board (running coding agents)",
+        "defaultValue": true
+      },
+      {
+        "key": "agentsExtra",
+        "type": "string",
+        "label": "Extra agent process names (comma separated)",
+        "defaultValue": ""
       }
     ]
   },
@@ -91,6 +105,9 @@
     "retro",
     "split-flap",
     "vestaboard",
-    "departure-board"
+    "departure-board",
+    "agents",
+    "claude-code",
+    "codex"
   ]
 }

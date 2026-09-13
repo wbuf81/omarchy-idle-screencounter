@@ -7,7 +7,7 @@ cd "$project_dir"
 jq -e '
   .schemaVersion == 1 and
   .id == "io.github.wbuf81.idle-screencounter" and
-  .version == "2.0.0" and
+  .version == "2.1.0" and
   .license == "MIT" and
   (.kinds | index("service")) != null and
   (.kinds | index("bar-widget")) != null and
@@ -44,6 +44,8 @@ for style in solari bits drum sweep step; do
   test -s "Flip$(tr '[:lower:]' '[:upper:]' <<< "${style:0:1}")${style:1}.qml"
 done
 grep -Fq 'flipStyleForShow' Service.qml
+# The Arrivals board only ever learns about agents through the scan script.
+grep -Fq 'agents-scan.sh' Service.qml
 if find assets/demo -maxdepth 1 -type f -name 'screenrecording-*' | grep -q .; then
   echo "Static check failed: raw screen recording found in release assets" >&2
   exit 1

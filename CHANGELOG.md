@@ -1,5 +1,22 @@
 # Changelog
 
+## 2.1.0
+
+- Arrivals board: a departure-board list of the coding agents running on this
+  machine under the countdown. Agent, project and branch, what it is doing
+  now as flip letters in the active board style, elapsed time, and a status
+  chip: WORKING, NEEDS YOU, or IDLE.
+- Hold: moving the pointer onto the card keeps the popup open with the
+  countdown paused. Move off to dismiss. Clicking a row focuses that agent's
+  terminal.
+- Adapters for Claude Code and Codex read session state and transcripts for
+  tool names only. OpenCode, Aider, Gemini CLI, Goose, Amp, Cursor, and
+  Copilot CLI are recognised generically by CPU activity and window title, and
+  any other process name can be added in the panel.
+- New settings `agentsBoard` (default on, hides when nothing is running) and
+  `agentsExtra`.
+- Every flip board now renders letters, not only digits.
+
 ## 2.0.0
 
 - Five flip boards to choose from: Solari, Vestaboard, Drum, Sweep, and Stepped.
