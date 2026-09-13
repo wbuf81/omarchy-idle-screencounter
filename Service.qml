@@ -568,7 +568,7 @@ Item {
               anchors.left: parent.left
               anchors.right: cursor.left
               anchors.rightMargin: Style.space(12)
-              text: root.held ? "Move off the board to dismiss · click a row to focus its terminal"
+              text: root.held ? "Move off to dismiss · click a row to focus it"
                 : root.previewVisible ? "Preview only · nothing will start" : "Move mouse or press any key to stay active"
             }
             Rectangle {
