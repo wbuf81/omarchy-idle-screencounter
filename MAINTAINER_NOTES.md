@@ -100,10 +100,17 @@ widgets get a bar-entry facade. What that means for this plugin:
   `updateEntryInline`. The panel therefore can no longer push screensaver and
   lock deadlines into Omarchy's `idle` config on 4.0.3.
 - `firstPartyServiceFor("omarchy.idle")` and `"omarchy.lock"` return `null`
-  for bar-widget plugins, so the v1.0.1 lifecycle suppression below is inert on
-  4.0.3. The countdown still ends on activity through `IdleMonitor`, but the
-  guard against overlaying an already-running screensaver depends on the shell
-  granting that proxy again.
+  for bar-widget plugins, so the v1.0.1 proxy-based suppression is inert on
+  4.0.3. Since 2.1.0 the screensaver is detected the way the idle service does
+  it: `Hyprland.rawEvent` `openwindow`/`closewindow` with class
+  `org.omarchy.screensaver`, plus a toplevel rescan every 2 s while the popup
+  is up and once at startup. Verified on 2026-09-15: the popup hid 1.2 s after
+  `omarchy-launch-screensaver force`. The lock surface sits above overlays, so
+  no lock detection is needed for visibility.
+- `Hyprland.toplevels` is empty until `Hyprland.refreshToplevels()` runs, and
+  `lastIpcObject` is filled by that refresh. The service refreshes before every
+  agent scan and on startup. `HyprlandToplevel.address` has no `0x` prefix;
+  `focusAgent` adds it for the Lua dispatcher.
 - `keepLoaded: true` means a plugin hot-reload keeps the old `Service.qml`
   alive. After editing the service, run `omarchy restart shell`; `dev-sync.sh`
   alone only refreshes the widget and panel.

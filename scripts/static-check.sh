@@ -49,6 +49,8 @@ done
 grep -Fq 'flipStyleForShow' Service.qml
 # The Arrivals board only ever learns about agents through the scan script.
 grep -Fq 'agents-scan.sh' Service.qml
+# The screensaver guard must not depend on the withheld idle proxy alone.
+grep -Fq 'org.omarchy.screensaver' Service.qml
 if find assets/demo -maxdepth 1 -type f -name 'screenrecording-*' | grep -q .; then
   echo "Static check failed: raw screen recording found in release assets" >&2
   exit 1

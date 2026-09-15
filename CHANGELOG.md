@@ -16,6 +16,10 @@
 - New settings `agentsBoard` (default on, hides when nothing is running) and
   `agentsExtra`.
 - Every flip board now renders letters, not only digits.
+- Fix: on Omarchy 4.0.3 the popup could appear over a running screensaver after
+  a shell reload, because the plugin no longer receives the idle service proxy.
+  The screensaver window is now detected directly from Hyprland's window events
+  and the popup hides within a moment of it opening.
 
 ## 2.0.0
 

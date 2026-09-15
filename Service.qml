@@ -37,10 +37,70 @@ Item {
   // this service's IdleMonitor partway through an existing idle cycle, so its
   // local elapsed time must never keep a popup above the real screensaver or
   // lock surface.
-  readonly property bool screensaverActive: !!omarchyIdle && (
+  // Omarchy 4.0.3 withholds the idle proxy from bar-widget plugins, so the
+  // screensaver is also detected the way the idle service itself does it: a
+  // Hyprland toplevel with the screensaver's window class.
+  // Quickshell only fills Hyprland.toplevels after refreshToplevels(), so the
+  // live signal is Hyprland's own event stream: openwindow carries the class,
+  // closewindow the address. A refresh on startup covers a reload that lands
+  // while the screensaver is already up.
+  readonly property string screensaverClass: "org.omarchy.screensaver"
+  property var screensaverWindows: ({})
+  readonly property bool screensaverWindowOpen: Object.keys(screensaverWindows).length > 0
+
+  function noteScreensaverWindow(address, open) {
+    var next = ({})
+    for (var key in screensaverWindows) next[key] = true
+    if (open) next[String(address)] = true
+    else delete next[String(address)]
+    screensaverWindows = next
+  }
+
+  function scanScreensaverWindows() {
+    var tops = Hyprland.toplevels ? Hyprland.toplevels.values : []
+    var next = ({})
+    for (var i = 0; i < tops.length; i++) {
+      var ipc = tops[i].lastIpcObject || {}
+      if (String(ipc["class"] || "") === screensaverClass) next[String(tops[i].address)] = true
+    }
+    screensaverWindows = next
+  }
+
+  Connections {
+    target: Hyprland
+    function onRawEvent(event) {
+      var name = String(event.name || "")
+      if (name === "openwindow") {
+        var parts = String(event.data || "").split(",")
+        if (parts.length >= 3 && parts[2] === root.screensaverClass) root.noteScreensaverWindow(parts[0], true)
+      } else if (name === "closewindow") {
+        root.noteScreensaverWindow(String(event.data || ""), false)
+      }
+    }
+  }
+
+  Timer {
+    id: toplevelWarmup
+    interval: 1500
+    running: true
+    onTriggered: root.scanScreensaverWindows()
+  }
+
+  // Belt and braces while the popup is up: re-read the toplevel list every
+  // two seconds so a screensaver that slipped past the event stream still
+  // hides the card within a moment.
+  Timer {
+    interval: 2000
+    repeat: true
+    running: root.popupVisible
+    triggeredOnStart: true
+    onTriggered: { Hyprland.refreshToplevels(); toplevelSettle.restart() }
+  }
+  Timer { id: toplevelSettle; interval: 350; onTriggered: root.scanScreensaverWindows() }
+  readonly property bool screensaverActive: screensaverWindowOpen || (!!omarchyIdle && (
     omarchyIdle.screensaverStartedThisCycle === true
     || Number(omarchyIdle.screensaverWindowCount || 0) > 0
-  )
+  ))
   readonly property bool sessionLocked: !!omarchyLock && (
     omarchyLock.locked === true || omarchyLock.lockRequested === true
   )
@@ -211,7 +271,10 @@ Item {
     repeat: true
     running: root.popupVisible && root.agentsBoardEnabled
     triggeredOnStart: true
-    onTriggered: if (!agentScan.running) agentScan.running = true
+    onTriggered: {
+      Hyprland.refreshToplevels()
+      if (!agentScan.running) agentScan.running = true
+    }
   }
 
   // Terminal titles, one "any<TAB>title" per line. The scan attributes a title
@@ -275,6 +338,7 @@ Item {
   function focusAgent(address) {
     var safe = String(address || "").replace(/[^0-9a-fx]/gi, "")
     if (safe === "") return
+    if (safe.indexOf("0x") !== 0) safe = "0x" + safe
     Hyprland.dispatch('hl.dsp.focus({ window = "address:' + safe + '" })')
     held = false
     console.log("idle-screen-counter focus " + safe)
@@ -349,6 +413,7 @@ Item {
         idleArmed: root.idleArmed,
         idle: idleMonitor.isIdle,
         screensaverActive: root.screensaverActive,
+        screensaverWindowOpen: root.screensaverWindowOpen,
         sessionLocked: root.sessionLocked,
         warning: root.requestedWarningSeconds,
         effectiveWarning: root.warningSeconds,
@@ -361,6 +426,7 @@ Item {
         activeStyle: root.activeStyle,
         agentsBoard: root.agentsBoardEnabled,
         agents: root.agentRows.length,
+        agentsWithWindow: root.agentRows.filter(function(r) { return r.address !== "" }).length,
         held: root.held,
         placement: root.effectivePlacement
       })
@@ -606,5 +672,5 @@ Item {
     }
   }
 
-  Component.onCompleted: console.log("idle-screen-counter ready warning=" + warningSeconds + " screensaver=" + screensaverSeconds + " placement=" + placement + " flipStyle=" + flipStyle)
+  Component.onCompleted: { Hyprland.refreshToplevels(); console.log("idle-screen-counter ready warning=" + warningSeconds + " screensaver=" + screensaverSeconds + " placement=" + placement + " flipStyle=" + flipStyle) }
 }
