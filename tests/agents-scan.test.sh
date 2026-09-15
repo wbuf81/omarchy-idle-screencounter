@@ -35,9 +35,30 @@ echo "$record" | jq -e '.agent == "codex" and .strategy == "codex" and (.tools =
 record=$(summarize_generic 888 aider Aider /home/wes/Projects/anything 1789324406 9 "")
 echo "$record" | jq -e '.agent == "aider" and .label == "Aider" and .strategy == "generic" and .tools == [] and .cpuTicks == 9' >/dev/null
 
-# A quoted title survives JSON escaping.
-record=$(AGENTS_TITLES=$'any\t✳ Demo "app" cleanup' summarize_claude 4242 /home/wes/Projects/demo.app 1789324406 1 "")
+# A matched title with quotes and a control byte survives JSON escaping.
+printf '%s\n' '{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working on the \"quoted\" board"}]}}' >> "$transcript"
+record=$(AGENTS_TITLES="$(printf 'any\t\xe2\x9c\xb3 the "quoted" board\x01')" summarize_claude 4242 /home/wes/Projects/demo.app 1789324406 1 "")
+echo "$record" | jq -e '.windowTitle == "✳ the \"quoted\" board"' >/dev/null
+
+# A known attribution is reused while the window still exists, and dropped once it is gone.
+record=$(AGENTS_TITLES=$'any\t✳ Demo app cleanup' AGENTS_KNOWN=$'4242\t✳ Demo app cleanup' summarize_claude 4242 /home/wes/Projects/demo.app 1789324406 1 "")
+echo "$record" | jq -e '.windowTitle == "✳ Demo app cleanup"' >/dev/null
+record=$(AGENTS_TITLES=$'any\t✳ Something else' AGENTS_KNOWN=$'4242\t✳ Gone window' summarize_claude 4242 /home/wes/Projects/demo.app 1789324406 1 "")
 echo "$record" | jq -e '.windowTitle == ""' >/dev/null
+
+# A cwd with spaces and dots maps to Claude Code's folder name.
+mkdir -p "$fixture/.claude/projects/-home-wes-My-Projects-demo-app"
+printf '%s\n' '{"type":"user","cwd":"/home/wes/My Projects/demo.app","gitBranch":"spaces","message":{"role":"user","content":"x"}}' \
+  '{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t9","name":"Grep","input":{}}]}}' > "$fixture/.claude/projects/-home-wes-My-Projects-demo-app/s2.jsonl"
+record=$(summarize_claude 5151 "/home/wes/My Projects/demo.app" 1789324406 1 "")
+echo "$record" | jq -e '.branch == "spaces" and .tools == ["Grep"] and .cwd == "/home/wes/My Projects/demo.app"' >/dev/null
+
+# A corrupt session status cannot break the JSON.
+cat > "$fixture/.claude/sessions/6161.json" <<'JSON'
+{"pid":6161,"sessionId":"abc-123","cwd":"/home/wes/Projects/demo.app","status":"bu\\sy"}
+JSON
+record=$(summarize_claude 6161 /home/wes/Projects/demo.app 1789324406 1 "")
+echo "$record" | jq -e '.sessionStatus | type == "string"' >/dev/null
 
 # No processes match in the fixture, so the full scan prints an empty array.
 out=$(AGENTS_SCAN_LIBRARY= AGENTS_SCAN_ONLY="nonexistent-agent-xyz" bash "$here/../scripts/agents-scan.sh")

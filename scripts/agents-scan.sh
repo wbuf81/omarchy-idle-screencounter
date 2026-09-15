@@ -13,7 +13,10 @@
 #   AGENTS_TITLES        newline-separated "pid<TAB>title" candidates ("any" as
 #                        the pid matches every record); a title is attributed
 #                        to a Claude session when its text appears in the
-#                        transcript tail
+#                        transcript
+#   AGENTS_KNOWN         newline-separated "pid<TAB>title" attributions from a
+#                        previous scan; reused without re-reading the transcript
+#                        while that title is still among the candidates
 #   AGENTS_SCAN_ONLY     comma-separated process names; restricts the table to
 #                        exactly these names (tests)
 #   AGENTS_SCAN_HOME     overrides $HOME (tests)
@@ -37,12 +40,16 @@ amp|Amp|generic
 cursor-agent|Cursor|generic
 copilot|Copilot CLI|generic"
 
+# JSON string escaping. Control characters cannot be represented without
+# \u escapes, so they are dropped: a stray OSC byte in some window's title
+# must never take the whole board down.
 json_escape() {
   local s=${1//\\/\\\\}
   s=${s//\"/\\\"}
   s=${s//$'\n'/ }
   s=${s//$'\t'/ }
-  printf '%s' "$s"
+  s=${s//$'\r'/ }
+  printf '%s' "$s" | tr -d '\000-\037\177'
 }
 
 json_string_array() {
@@ -95,11 +102,25 @@ ancestors_for() {
 attribute_title() {
   local pid=$1 transcript=$2 tpid title text
   [[ -z ${AGENTS_TITLES:-} || -z $transcript || ! -r $transcript ]] && return
+  # A previous scan already paid for the transcript read: keep its answer
+  # while that window still exists.
+  if [[ -n ${AGENTS_KNOWN:-} ]]; then
+    while IFS=$'\t' read -r tpid title; do
+      [[ $tpid != "$pid" || -z $title ]] && continue
+      if grep -qF -- $'\t'"$title" <<< "$AGENTS_TITLES"; then printf '%s' "$title"; return; fi
+    done <<< "$AGENTS_KNOWN"
+  fi
+  local needle
   while IFS=$'\t' read -r tpid title; do
     [[ $tpid != "$pid" && $tpid != any ]] && continue
+    title=$(printf '%s' "$title" | tr -d '\000-\037\177')
     text=$(printf '%s' "$title" | sed -E 's/^[^[:alnum:]]+[[:space:]]*//')
     [[ -z $text || $text == "$title" ]] && continue
-    if grep -qF -m1 -- "$text" "$transcript"; then
+    # The transcript is JSON, so quotes and backslashes in the title appear
+    # escaped there.
+    needle=${text//\\/\\\\}
+    needle=${needle//\"/\\\"}
+    if grep -qF -m1 -- "$needle" "$transcript"; then
       printf '%s' "$title"
       return
     fi
@@ -113,7 +134,7 @@ emit_record() {
   # shellcheck disable=SC2086
   printf '{"pid":%s,"agent":"%s","label":"%s","strategy":"%s","cwd":"%s","started":%s,"lastActivity":%s,"branch":"%s","tools":%s,"sessionStatus":"%s","cpuTicks":%s,"windowTitle":"%s","ancestors":%s}' \
     "${pid:-0}" "$(json_escape "$agent")" "$(json_escape "$label")" "$strategy" "$(json_escape "$cwd")" \
-    "${started:-0}" "${last:-0}" "$(json_escape "$branch")" "$(json_string_array "$@")" "$status" "${cpu:-0}" \
+    "${started:-0}" "${last:-0}" "$(json_escape "$branch")" "$(json_string_array "$@")" "$(json_escape "$status")" "${cpu:-0}" \
     "$(json_escape "$title")" "$(json_number_array $ancestors)"
 }
 
@@ -125,7 +146,9 @@ summarize_claude() {
     sid=$(grep -oE '"sessionId":"[^"]+"' "$session" | head -1 | cut -d'"' -f4)
     status=$(grep -oE '"status":"[^"]+"' "$session" | head -1 | cut -d'"' -f4)
   fi
-  local projdir="$home/.claude/projects/$(printf '%s' "$cwd" | sed 's#[/.]#-#g')"
+  # Claude Code names the project folder after the cwd with every character
+  # outside [A-Za-z0-9] replaced by "-".
+  local projdir="$home/.claude/projects/$(printf '%s' "$cwd" | sed 's#[^A-Za-z0-9]#-#g')"
   if [[ -n $sid && -r "$projdir/$sid.jsonl" ]]; then
     transcript="$projdir/$sid.jsonl"
   else

@@ -134,4 +134,31 @@ var rows = Logic.sortedAgentRows([
 ])
 assert.deepEqual(rows.map(function(r) { return r.status }), ["needs-you", "working", "idle"])
 
+// Titles claimed twice identify nobody; unique titles survive.
+var deduped = Logic.dedupeAgentTitles([
+  { pid: 1, windowTitle: "✳ Same" }, { pid: 2, windowTitle: "✳ Same" }, { pid: 3, windowTitle: "✳ Unique" }, { pid: 4, windowTitle: "" }
+])
+assert.deepEqual(deduped.map(function(r) { return r.windowTitle }), ["", "", "✳ Unique", ""])
+assert.equal(Logic.dedupeAgentTitles(null).length, 0)
+
+// Generic records label themselves and fall back to the process start for elapsed.
+var genericRow = Logic.agentRow({ pid: 7, agent: "goose", label: "Goose", strategy: "generic", cwd: "/srv/repo/", started: Math.floor(now / 1000) - 90, lastActivity: 0, branch: "", tools: [], sessionStatus: "", cpuTicks: 3, windowTitle: "" }, null, now, 3)
+assert.equal(genericRow.agentLabel, "Goose")
+assert.equal(genericRow.project, "repo")
+assert.equal(genericRow.status, "idle")
+assert.equal(genericRow.elapsed, "01:30")
+assert.equal(genericRow.address, "")
+assert.equal(Logic.agentRow({}, null, now).project, "?")
+
+// Within a status group, the most recent activity comes first.
+var recentFirst = Logic.sortedAgentRows([
+  Logic.agentRow(Object.assign({}, busy, { pid: 10, lastActivity: Math.floor(now / 1000) - 60 }), null, now),
+  Logic.agentRow(Object.assign({}, busy, { pid: 11, lastActivity: Math.floor(now / 1000) - 5 }), null, now)
+])
+assert.deepEqual(recentFirst.map(function(r) { return r.pid }), [11, 10])
+
+// Extra process names dedupe and reject shell metacharacters individually.
+assert.equal(Logic.normalizedAgentsExtra("goose,goose,aider"), "goose,aider")
+assert.equal(Logic.normalizedAgentsExtra("ok-name,$(evil),also_ok"), "ok-name,also_ok")
+
 console.log("logic tests passed")

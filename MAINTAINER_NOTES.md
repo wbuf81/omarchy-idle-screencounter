@@ -59,8 +59,11 @@ Spec: `docs/superpowers/specs/2026-09-13-arrivals-board-design.md`. Plan:
   Ghostty is one process for all windows, so the pid alone is ambiguous there.
   The service passes every toplevel title to the scan, which attributes a
   glyph-prefixed title to a Claude session when its text appears in that
-  transcript; a title claimed by two records is dropped. A row without an
-  address still shows, just without click-to-focus.
+  transcript (quotes and backslashes are matched in their JSON-escaped form);
+  `Logic.dedupeAgentTitles` drops a title claimed by two records. The service
+  hands the previous scan's attributions back as `AGENTS_KNOWN`, so a
+  transcript is grepped once per window, not once per 5 s scan. A row without
+  an address still shows, just without click-to-focus.
 - Claude Code title glyphs: spinner glyphs (`◐◓◑◒`) mean busy, `✳` means
   waiting for input. `Logic.agentStatus` reads them as a fallback.
 - Hold: the `PanelWindow` mask is `Region { item: card }` only while the board

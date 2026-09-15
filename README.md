@@ -139,8 +139,18 @@ Move the pointer onto the card instead and it **holds**: the countdown pauses,
 the header reads HELD, and the card stays until you move off. While held, hover
 a row for its last tool calls and click it to focus that terminal.
 
+<div align="center">
+  <img src="assets/screenshots/arrivals-board.webp" alt="Idle warning with the Arrivals board: four Claude Code sessions, one waiting, one working" width="900">
+</div>
+
 The board hides itself when no agent is running, so a machine without agents
 sees the plain countdown. Turn it off in the panel or with `agentsBoard: false`.
+
+Click-to-focus needs the row to know its window. Terminals that run one
+process per window (Alacritty, kitty, foot) match directly. Ghostty runs every
+window in one process, so the board matches a Claude Code session by finding
+its window title inside the transcript; when two sessions could claim the same
+title, the row still shows but has no click target.
 
 ### What it reads
 

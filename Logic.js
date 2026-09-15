@@ -157,6 +157,22 @@ function agentRow(record, top, nowMs, previousCpuTicks) {
   }
 }
 
+// A window title claimed by more than one record identifies neither of them.
+// Returns a shallow copy of the records with such titles cleared.
+function dedupeAgentTitles(records) {
+  var count = {}
+  var list = Array.isArray(records) ? records : []
+  for (var i = 0; i < list.length; i++) {
+    var title = String(list[i] && list[i].windowTitle || "")
+    if (title !== "") count[title] = (count[title] || 0) + 1
+  }
+  return list.map(function(record) {
+    var copy = Object.assign({}, record)
+    if (count[String(copy.windowTitle || "")] > 1) copy.windowTitle = ""
+    return copy
+  })
+}
+
 function sortedAgentRows(rows) {
   var order = { "needs-you": 0, working: 1, idle: 2 }
   return (rows || []).slice().sort(function(a, b) {
@@ -266,6 +282,7 @@ if (typeof module !== "undefined") {
     elapsedLabel: elapsedLabel,
     agentRow: agentRow,
     sortedAgentRows: sortedAgentRows,
+    dedupeAgentTitles: dedupeAgentTitles,
     stripTitleGlyph: stripTitleGlyph,
     seconds: seconds,
     normalizedPlacement: normalizedPlacement,

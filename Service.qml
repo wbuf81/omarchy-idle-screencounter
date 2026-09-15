@@ -57,6 +57,10 @@ Item {
   readonly property string agentsExtra: Logic.normalizedAgentsExtra(setting("agentsExtra", ""))
   property var agentRows: []
   property var previousCpu: ({})
+  property int scansCompleted: 0
+  // pid<TAB>title attributions from the last scan, handed back so the script
+  // can skip re-reading transcripts for windows it already placed.
+  property string knownTitles: ""
   readonly property bool hasAgents: agentsBoardEnabled && agentRows.length > 0
   // Hovering the card keeps the popup up after the pointer ended idle.
   property bool held: false
@@ -174,7 +178,7 @@ Item {
   // Real countdowns pick their board here; previews pick theirs in preview().
   onPopupVisibleChanged: {
     if (popupVisible && !previewVisible) chooseStyle("")
-    if (!popupVisible) { agentRows = []; previousCpu = ({}); held = false }
+    if (!popupVisible) { agentRows = []; previousCpu = ({}); knownTitles = ""; scansCompleted = 0; held = false }
   }
   // A preview that ends while the real warning is up hands over to a fresh
   // board for the live countdown.
@@ -193,7 +197,8 @@ Item {
     command: ["bash", root.scanScript]
     environment: ({
       AGENTS_EXTRA: root.agentsExtra,
-      AGENTS_TITLES: root.candidateTitles()
+      AGENTS_TITLES: root.candidateTitles(),
+      AGENTS_KNOWN: root.knownTitles
     })
     stdout: StdioCollector {
       onStreamFinished: root.applyScan(text)
@@ -225,25 +230,23 @@ Item {
     var records
     try { records = JSON.parse(String(text || "[]")) } catch (e) { console.warn("idle-screen-counter agents-scan parse failed"); records = [] }
     if (!Array.isArray(records)) records = []
-    // A title claimed by more than one record identifies neither.
-    var titleCount = ({})
-    for (var t = 0; t < records.length; t++) {
-      var wt = String(records[t].windowTitle || "")
-      if (wt !== "") titleCount[wt] = (titleCount[wt] || 0) + 1
-    }
+    records = Logic.dedupeAgentTitles(records)
     var tops = Hyprland.toplevels ? Hyprland.toplevels.values : []
     var now = Date.now()
     var rows = []
     var nextCpu = ({})
+    var known = []
     for (var i = 0; i < records.length; i++) {
       var r = records[i]
-      if (titleCount[String(r.windowTitle || "")] > 1) r.windowTitle = ""
       var key = String(r.agent) + ":" + String(r.pid)
       nextCpu[key] = Number(r.cpuTicks || 0)
+      if (String(r.windowTitle || "") !== "") known.push(String(r.pid) + "\t" + String(r.windowTitle))
       rows.push(Logic.agentRow(r, root.toplevelFor(r, tops), now, previousCpu[key]))
     }
     previousCpu = nextCpu
+    knownTitles = known.join("\n")
     agentRows = Logic.sortedAgentRows(rows)
+    scansCompleted += 1
   }
 
   // A toplevel belongs to a record when its client pid is the agent or one of
@@ -280,7 +283,7 @@ Item {
   // Preview with nothing running shows two labelled sample rows so the board
   // is discoverable. Never mistaken for live data: the label says so.
   readonly property var sampleRows: {
-    if (!previewVisible || agentRows.length > 0) return []
+    if (!previewVisible || agentRows.length > 0 || scansCompleted === 0) return []
     var nowS = Math.floor(Date.now() / 1000)
     var rows = Logic.sortedAgentRows([
       Logic.agentRow({ pid: 0, agent: "sample", label: "Claude Code", strategy: "claude", cwd: "/home/you/Projects/your-app", started: nowS - 620, lastActivity: nowS - 12, branch: "main", tools: ["Read", "Edit"], sessionStatus: "busy", cpuTicks: 0, windowTitle: "" }, null, Date.now()),

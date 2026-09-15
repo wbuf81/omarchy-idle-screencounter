@@ -23,6 +23,7 @@ for entrypoint in Service.qml BarWidget.qml Panel.qml PlacementPicker.qml Logic.
   assets/screenshots/countdown-popup.webp \
   assets/screenshots/settings-panel.webp \
   assets/screenshots/placement-bottom-right.webp \
+  assets/screenshots/arrivals-board.webp \
   preview.png \
   assets/social/idle-screen-counter-share-card.png; do
   test -s "$entrypoint"
