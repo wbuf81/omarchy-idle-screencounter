@@ -22,6 +22,11 @@ Item {
 
   signal focusRequested(string address)
 
+  // Detail line for the row under the pointer while held; the host shows it
+  // in the footer so the card never changes height.
+  property string hoveredDetail: ""
+  onHeldChanged: if (!held) hoveredDetail = ""
+
   readonly property int shown: rows.length > maxRows ? maxRows - 1 : rows.length
   readonly property int hidden: rows.length - shown
   readonly property int working: countStatus("working")
@@ -33,6 +38,17 @@ Item {
   readonly property real projectWidth: Math.round(width * 0.19)
   readonly property real nowWidth: tileW * 11 + 10
   readonly property real elapsedWidth: tileW * 5 + 4
+
+  // "Bash › Bash › Bash › Write" reads as "Bash ×3 › Write".
+  function collapseTools(tools) {
+    var out = []
+    for (var i = 0; i < tools.length; i++) {
+      var name = String(tools[i])
+      if (out.length && out[out.length - 1].name === name) out[out.length - 1].count += 1
+      else out.push({ name: name, count: 1 })
+    }
+    return out.map(function(t) { return t.count > 1 ? t.name + " ×" + t.count : t.name }).join(" › ")
+  }
 
   function countStatus(status) {
     var n = 0
@@ -137,10 +153,18 @@ Item {
         required property int index
         readonly property var row: board.rows[index]
         readonly property bool hovered: hover.hovered && board.held
+        readonly property string detailText: (row.tools.length ? "Last: " + board.collapseTools(row.tools) : "No tool calls seen")
+          + (row.title !== "" ? "  ·  “" + row.title + "”" : "")
+          + (String(row.address || "") !== "" ? "  ·  click to focus" : "")
         width: column.width
-        height: board.rowHeight + (hovered ? detail.implicitHeight + 6 : 0)
+        height: board.rowHeight
 
-        Rectangle { anchors.fill: parent; color: board.accent; opacity: rowItem.hovered ? 0.06 : 0 }
+        onHoveredChanged: {
+          if (hovered) board.hoveredDetail = detailText
+          else if (board.hoveredDetail === detailText) board.hoveredDetail = ""
+        }
+
+        Rectangle { anchors.fill: parent; color: board.accent; opacity: rowItem.hovered ? 0.08 : 0 }
 
         HoverHandler { id: hover }
         TapHandler {
@@ -217,18 +241,6 @@ Item {
             }
           }
           Chip { anchors.verticalCenter: parent.verticalCenter; status: rowItem.row.status }
-        }
-
-        Caption {
-          id: detail
-          visible: rowItem.hovered
-          anchors.top: cells.bottom
-          width: parent.width
-          font.capitalization: Font.MixedCase
-          font.letterSpacing: 0.2
-          text: (rowItem.row.tools.length ? "Last: " + rowItem.row.tools.join(" › ") : "No tool calls seen")
-            + (rowItem.row.title !== "" ? "  ·  “" + rowItem.row.title + "”" : "")
-            + (String(rowItem.row.address || "") !== "" ? "  ·  click to focus" : "")
         }
 
         Rectangle { anchors.bottom: parent.bottom; width: parent.width; height: 1; color: board.line }

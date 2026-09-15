@@ -23,9 +23,9 @@ screensaver and lock services. It simply makes the transition visible—and much
 more fun.
 
 <div align="center">
-  <img src="assets/demo/idle-screen-counter-demo-clean.gif" alt="Animated Idle Screen Counter preview" width="900">
+  <img src="assets/demo/idle-screen-counter-demo-arrivals.gif" alt="Idle Screen Counter cycling its five boards above the Arrivals board, then held open by the pointer" width="900">
   <br>
-  <sub><a href="assets/demo/idle-screen-counter-demo-clean.mp4">Watch the full-quality 60 fps MP4</a></sub>
+  <sub><a href="assets/demo/idle-screen-counter-demo-arrivals.mp4">Watch the full-quality 60 fps MP4</a> · <a href="assets/demo/idle-screen-counter-demo-clean.gif">See it without the Arrivals board</a> (<a href="assets/demo/idle-screen-counter-demo-clean.mp4">MP4</a>)</sub>
 </div>
 
 ## Why it feels native

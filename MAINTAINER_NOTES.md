@@ -66,6 +66,12 @@ Spec: `docs/superpowers/specs/2026-09-13-arrivals-board-design.md`. Plan:
   an address still shows, just without click-to-focus.
 - Claude Code title glyphs: spinner glyphs (`◐◓◑◒`) mean busy, `✳` means
   waiting for input. `Logic.agentStatus` reads them as a fallback.
+- Hover detail: the row under the pointer writes `hoveredDetail`, which the
+  footer line shows; rows never change height, so the card stays put. Do not
+  test hover with `hl.dsp.cursor.move` warps: Hyprland delivers only the final
+  position to the layer surface, so rows look unhovered until the pointer
+  leaves. A real mouse works. The hold detector is a hover-enabled `MouseArea`
+  with `acceptedButtons: Qt.NoButton`, so row `TapHandler`s still get clicks.
 - Hold: the `PanelWindow` mask is `Region { item: card }` only while the board
   has rows (or is held); otherwise the empty region keeps the surface fully
   click-through. `held` keeps `popupVisible` true after `IdleMonitor.isIdle`

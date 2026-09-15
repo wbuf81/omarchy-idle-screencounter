@@ -402,14 +402,20 @@ Item {
         anchors.verticalCenterOffset: root.effectivePlacement.indexOf("top") !== -1 ? -safeVerticalOffset
           : root.effectivePlacement.indexOf("bottom") !== -1 ? safeVerticalOffset : 0
 
-        HoverHandler {
+        // A hover-enabled MouseArea, not a bare HoverHandler: on this layer
+        // surface only a MouseArea turns on hover delivery to the rows below.
+        // NoButton leaves presses to the row TapHandlers.
+        MouseArea {
+          anchors.fill: parent
           enabled: root.hasAgents || root.held
-          onHoveredChanged: {
-            if (hovered) { root.held = true; heldSafety.restart() }
-            else root.held = false
-          }
+          hoverEnabled: true
+          acceptedButtons: Qt.NoButton
+          onEntered: { root.held = true; heldSafety.restart() }
+          onExited: root.held = false
         }
+        HoverHandler { id: cardHover }
         Timer { id: heldSafety; interval: 45000; onTriggered: root.held = false }
+
 
         // Flat station-board palette derived from the popup theme tokens.
         readonly property color alert: Color.urgent
@@ -542,6 +548,7 @@ Item {
           }
 
           ArrivalsBoard {
+            id: arrivals
             visible: rows.length > 0
             width: parent.width
             rows: root.hasAgents ? root.agentRows : root.sampleRows
@@ -571,7 +578,10 @@ Item {
               anchors.left: parent.left
               anchors.right: cursor.left
               anchors.rightMargin: Style.space(12)
-              text: root.held ? "Move off to dismiss · click a row to focus it"
+              font.capitalization: root.held && arrivals.hoveredDetail !== "" ? Font.MixedCase : Font.AllUppercase
+              font.letterSpacing: root.held && arrivals.hoveredDetail !== "" ? 0.2 : 1.6
+              text: root.held && arrivals.hoveredDetail !== "" ? arrivals.hoveredDetail
+                : root.held ? "Move off to dismiss · click a row to focus it"
                 : root.previewVisible ? "Preview only · nothing will start" : "Move mouse or press any key to stay active"
             }
             Rectangle {
